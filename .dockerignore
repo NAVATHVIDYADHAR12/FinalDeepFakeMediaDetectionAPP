@@ -7,10 +7,11 @@ __pycache__/
 **/__pycache__/
 .pytest_cache/
 backend/data/
-# The face models are committed and must go into the image; only the
-# training-specific classifiers are excluded.
+# The face models are committed and must go into the image, and so is the
+# manifest once training has produced a real one -- detector.py reads it for
+# the per-model metrics the Models page shows. Only the untrained placeholder
+# is excluded.
 backend/models/dummy_testnet*
-backend/models/manifest.json
 backend/tests/
 frontend/node_modules/
 frontend/dist/

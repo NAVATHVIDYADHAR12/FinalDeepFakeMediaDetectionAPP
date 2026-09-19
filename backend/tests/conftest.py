@@ -27,7 +27,10 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 @pytest.fixture(scope="session", autouse=True)
 def _ensure_placeholder_model():
-    """Guarantee at least one classifier exists so detector tests can run."""
+    """Allow the untrained fixture only inside tests of the inference plumbing."""
+    import os
+    previous = os.environ.get("OMNIGUARD_ALLOW_DUMMY_MODELS")
+    os.environ["OMNIGUARD_ALLOW_DUMMY_MODELS"] = "1"
     has_classifier = any(
         p.name not in {"face_detection_yunet.onnx", "face_recognition_sface.onnx"}
         for p in cfg.MODELS_DIR.glob("*.onnx")
@@ -37,6 +40,10 @@ def _ensure_placeholder_model():
         import make_dummy_model
         make_dummy_model.install()
     yield
+    if previous is None:
+        os.environ.pop("OMNIGUARD_ALLOW_DUMMY_MODELS", None)
+    else:
+        os.environ["OMNIGUARD_ALLOW_DUMMY_MODELS"] = previous
 
 
 @pytest.fixture(autouse=True)

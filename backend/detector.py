@@ -18,34 +18,57 @@ which ONNX Runtime does not do; CAM needs only the forward pass we already ran.
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 
 import numpy as np
 import cv2
 import onnxruntime as ort
+from PIL import Image
 
 import config as cfg
 
 # The face models live in the same folder but are not deepfake classifiers.
 _EXCLUDED = {"face_detection_yunet.onnx", "face_recognition_sface.onnx"}
 
-_MEAN = np.array(cfg.IMAGENET_MEAN, dtype=np.float32).reshape(3, 1, 1)
-_STD = np.array(cfg.IMAGENET_STD, dtype=np.float32).reshape(3, 1, 1)
-
 # Human-readable names for the dashboard's model comparison table
 DISPLAY_NAMES = {
     "efficientnet_b0": "EfficientNet-B0",
     "legacy_xception": "XceptionNet",
     "mobilenetv3_large_100": "MobileNetV3",
+    "community_forensics_vit_s": "Community Forensics ViT-S",
+    "community_forensics_v13_fp32": "Community Forensics ViT-S v13",
 }
 
 
-def _preprocess(image_bgr: np.ndarray) -> np.ndarray:
-    """BGR uint8 image -> normalized NCHW float32 batch of 1."""
-    size = cfg.CLASSIFIER_INPUT_SIZE
-    resized = cv2.resize(image_bgr, (size, size), interpolation=cv2.INTER_AREA)
-    rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+def _preprocess(image_bgr: np.ndarray, manifest: dict | None = None) -> np.ndarray:
+    """BGR uint8 image -> the tensor contract declared by the model manifest."""
+    manifest = manifest or {}
+    size = int(manifest.get("img_size") or cfg.CLASSIFIER_INPUT_SIZE)
+    normalization = manifest.get("normalization", {})
+    mean = np.asarray(normalization.get("mean", cfg.IMAGENET_MEAN), dtype=np.float32)
+    std = np.asarray(normalization.get("std", cfg.IMAGENET_STD), dtype=np.float32)
+
+    resize_size = manifest.get("resize_size")
+    if resize_size:
+        # Community Forensics uses PIL bicubic: shortest edge -> resize_size,
+        # then an exact center crop.  This is part of the trained contract.
+        rgb_image = Image.fromarray(cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB))
+        width, height = rgb_image.size
+        scale = float(resize_size) / min(width, height)
+        resized = rgb_image.resize(
+            (round(width * scale), round(height * scale)), Image.Resampling.BICUBIC
+        )
+        left = (resized.width - size) // 2
+        top = (resized.height - size) // 2
+        rgb = np.asarray(resized.crop((left, top, left + size, top + size)),
+                         dtype=np.float32) / 255.0
+    else:
+        resized = cv2.resize(image_bgr, (size, size), interpolation=cv2.INTER_AREA)
+        rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+
     chw = np.transpose(rgb, (2, 0, 1))
-    return ((chw - _MEAN) / _STD)[None, ...].astype(np.float32)
+    return ((chw - mean[:, None, None]) / std[:, None, None])[None, ...].astype(np.float32)
 
 
 def _softmax(x: np.ndarray) -> np.ndarray:
@@ -56,19 +79,36 @@ def _softmax(x: np.ndarray) -> np.ndarray:
 class DeepfakeDetector:
     """Loads every trained ONNX classifier it finds and runs them as an ensemble."""
 
-    def __init__(self) -> None:
+    def __init__(self, models_dir: Path | None = None) -> None:
         self.models: list[dict] = []
         self.manifest: dict = {}
+        self.models_dir = Path(models_dir or cfg.MODELS_DIR)
         self._load()
 
     # ------------------------------------------------------------------ loading
     def _load(self) -> None:
-        manifest_path = cfg.MODELS_DIR / "manifest.json"
+        manifest_path = self.models_dir / "manifest.json"
         if manifest_path.exists():
             try:
                 self.manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
                 self.manifest = {}
+
+        # The repository's tiny dummy network exists only to exercise the
+        # pipeline in tests. It produces plausible-shaped numbers but has
+        # never learned to distinguish real from manipulated media. Never
+        # expose those numbers as scan verdicts in a normal app run.
+        allow_dummy = os.getenv("OMNIGUARD_ALLOW_DUMMY_MODELS", "").lower() in {
+            "1", "true", "yes",
+        }
+        dummy_arches = {
+            item.get("arch")
+            for item in self.manifest.get("models", [])
+            if item.get("dummy") is True
+        }
+        if (not allow_dummy and self.manifest.get("dummy") is True):
+            print("  ! ignoring untrained dummy classifier manifest")
+            return
 
         metrics_by_arch = {
             m["arch"]: m.get("metrics", {})
@@ -81,8 +121,13 @@ class DeepfakeDetector:
         # 2 physical cores on the target machine; more threads only adds contention
         opts.intra_op_num_threads = 2
 
-        for path in sorted(cfg.MODELS_DIR.glob("*.onnx")):
+        for path in sorted(self.models_dir.glob("*.onnx")):
             if path.name in _EXCLUDED:
+                continue
+            if not allow_dummy and (
+                path.stem in dummy_arches or path.stem.startswith("dummy_")
+            ):
+                print(f"  ! ignoring untrained classifier {path.name}")
                 continue
             try:
                 sess = ort.InferenceSession(
@@ -93,7 +138,7 @@ class DeepfakeDetector:
                 continue
 
             arch = path.stem
-            weight_path = cfg.MODELS_DIR / f"{arch}_classifier_w.npy"
+            weight_path = self.models_dir / f"{arch}_classifier_w.npy"
             weights = None
             if weight_path.exists():
                 try:
@@ -116,9 +161,23 @@ class DeepfakeDetector:
     def ready(self) -> bool:
         return len(self.models) > 0
 
+    @property
+    def task(self) -> str:
+        """Return the visual task these weights were trained to solve.
+
+        Old manifests predate this field. Those models used the Sowaiba
+        face-swap corpus, so the safe backwards-compatible default is face
+        manipulation -- never generic AI-image detection.
+        """
+        return str(self.manifest.get("task") or "face_manipulation")
+
+    def supports(self, task: str) -> bool:
+        return self.task in {task, "universal_media_authenticity"}
+
     def info(self) -> dict:
         return {
             "ready": self.ready,
+            "task": self.task,
             "model_count": len(self.models),
             "models": [
                 {
@@ -146,22 +205,33 @@ class DeepfakeDetector:
                 "Run the Colab notebook and place the .onnx files in backend/models/."
             )
 
-        batch = _preprocess(face_bgr)
+        batch = _preprocess(face_bgr, self.manifest)
         per_model, probs = [], []
         best_cam, best_conf = None, -1.0
 
         for m in self.models:
             outputs = m["session"].run(None, {m["input_name"]: batch})
             logits = np.asarray(outputs[0], dtype=np.float32)
-            prob_fake = float(_softmax(logits)[0, cfg.FAKE_IDX])
+            if self.manifest.get("output_type") == "sigmoid_logit":
+                logit = float(logits.reshape(-1)[0])
+                prob_fake = float(1.0 / (1.0 + np.exp(-np.clip(logit, -80, 80))))
+            else:
+                prob_fake = float(_softmax(logits)[0, cfg.FAKE_IDX])
             probs.append(prob_fake)
 
+            confidence_kind = self.manifest.get(
+                "confidence_kind", "uncalibrated_model_certainty"
+            )
+            display_score = (
+                prob_fake if confidence_kind == "threshold_calibrated_model_score"
+                else abs(prob_fake - 0.5) * 2
+            )
             per_model.append({
                 "arch": m["arch"],
                 "name": m["name"],
                 "fake_probability": round(prob_fake, 4),
                 "verdict": cfg.verdict_from_score(prob_fake),
-                "confidence": round(abs(prob_fake - 0.5) * 2, 4),
+                "confidence": round(display_score, 4),
                 "test_accuracy": m["metrics"].get("accuracy"),
                 "test_auc": m["metrics"].get("roc_auc"),
             })
@@ -178,12 +248,23 @@ class DeepfakeDetector:
         # Agreement: 1.0 when every model says the same thing.
         spread = float(np.std(probs)) if len(probs) > 1 else 0.0
 
+        confidence_kind = self.manifest.get(
+            "confidence_kind", "uncalibrated_model_certainty"
+        )
+        display_score = (
+            ensemble if confidence_kind == "threshold_calibrated_model_score"
+            else abs(ensemble - 0.5) * 2
+        )
         result = {
             "fake_probability": round(ensemble, 4),
             "authenticity_score": round((1.0 - ensemble) * 100, 1),
             "verdict": cfg.verdict_from_score(ensemble),
             "risk_level": cfg.risk_from_score(ensemble),
-            "confidence": round(abs(ensemble - 0.5) * 2, 4),
+            "confidence": round(display_score, 4),
+            "confidence_kind": confidence_kind,
+            "decision_threshold": self.manifest.get(
+                "decision_threshold", cfg.FAKE_THRESHOLD
+            ),
             "model_agreement": round(max(0.0, 1.0 - spread * 2), 4),
             "models": per_model,
         }

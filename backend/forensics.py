@@ -14,6 +14,7 @@ import io
 from pathlib import Path
 
 import numpy as np
+import cv2
 from PIL import Image, ImageChops, ExifTags
 
 import config as cfg
@@ -163,20 +164,67 @@ def error_level_analysis(path: Path, quality: int = 92) -> dict:
         return {"error": f"{type(exc).__name__}: {exc}"}
 
 
+def assess_input_quality(path: Path, image_bgr: np.ndarray) -> dict:
+    """Flag inputs outside the detector's comfortable operating range.
+
+    These are warning heuristics, not authenticity signals. In particular,
+    compression and blur must never be counted as evidence that an image is AI.
+    They only tell the UI that the neural probability is less dependable.
+    """
+    height, width = image_bgr.shape[:2]
+    short_edge = min(width, height)
+    gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+    blur_variance = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    bits_per_pixel = path.stat().st_size * 8 / max(1, width * height)
+    suffix = path.suffix.lower()
+
+    limitations: list[str] = []
+    if short_edge < 384:
+        limitations.append(
+            f"short edge is {short_edge}px; the detector must upscale it to 384px"
+        )
+    if blur_variance < 20:
+        limitations.append("image is heavily blurred or contains very little fine detail")
+    if suffix in {".jpg", ".jpeg", ".jfif"} and bits_per_pixel < 0.45:
+        limitations.append("JPEG is extremely compressed for its dimensions")
+
+    return {
+        "reliability": "LIMITED" if limitations else "STANDARD",
+        "short_edge_px": short_edge,
+        "blur_variance": round(blur_variance, 2),
+        "bits_per_pixel": round(bits_per_pixel, 3),
+        "limitations": limitations,
+        "note": (
+            "Input quality may make the neural probability unstable. Compression, "
+            "blur, and low resolution are not evidence of AI generation."
+            if limitations else
+            "No obvious resolution, blur, or extreme-compression limitation detected."
+        ),
+    }
+
+
 def build_findings(detection: dict, metadata: dict, c2pa: dict,
-                   ela: dict, face_count: int) -> list[dict]:
+                   ela: dict, face_count: int, quality: dict | None = None) -> list[dict]:
     """Assemble the 'Key Findings' bullets shown on the report page.
 
     Severity drives the dot colour in the UI: high = red, medium = amber,
     info = blue.
     """
     findings: list[dict] = []
-    fake_p = detection.get("fake_probability", 0.0)
+    fake_p = detection.get("fake_probability")
 
-    if fake_p >= cfg.FAKE_THRESHOLD:
+    if not detection.get("supported", True) or fake_p is None:
+        findings.append({
+            "severity": "medium",
+            "text": ("Neural verdict unavailable: the loaded models detect face swaps, "
+                     "not full-scene AI generation"),
+        })
+    elif fake_p >= cfg.FAKE_THRESHOLD:
+        label = ("AI-generation signal" if detection.get("signal") == "ai_generation"
+                 else "Face manipulation")
         findings.append({
             "severity": "high",
-            "text": f"Face manipulation detected ({fake_p * 100:.0f}% confidence)",
+            "text": f"{label} detected ({fake_p * 100:.0f}% model probability)",
         })
     elif fake_p >= cfg.SUSPICIOUS_THRESHOLD:
         findings.append({
@@ -186,11 +234,18 @@ def build_findings(detection: dict, metadata: dict, c2pa: dict,
     else:
         findings.append({
             "severity": "info",
-            "text": "No manipulation signature detected by the model ensemble",
+            "text": ("Model score is below the detection threshold; this does not "
+                     "prove that the image came from a camera"),
         })
 
-    agreement = detection.get("model_agreement", 1.0)
-    if agreement < 0.6:
+    if quality and quality.get("reliability") == "LIMITED":
+        findings.append({
+            "severity": "medium",
+            "text": "Input-quality warning: " + "; ".join(quality["limitations"]),
+        })
+
+    agreement = detection.get("model_agreement")
+    if agreement is not None and agreement < 0.6:
         findings.append({
             "severity": "medium",
             "text": "Models disagree on this sample - treat the verdict as uncertain",
@@ -199,7 +254,7 @@ def build_findings(detection: dict, metadata: dict, c2pa: dict,
     if face_count == 0:
         findings.append({
             "severity": "info",
-            "text": "No face detected; analysis ran on the full frame",
+            "text": "No face detected; face-manipulation models were not applied",
         })
     elif face_count > 1:
         findings.append({

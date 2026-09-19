@@ -13,6 +13,7 @@ export default function System() {
   if (!info) return <Spinner label="Loading system status…" />
 
   const d = info.detector
+  const ai = info.ai_detector ?? { ready: false, model_count: 0, models: [] }
 
   return (
     <div className="space-y-5">
@@ -20,10 +21,11 @@ export default function System() {
         <Panel title="Detection Engine">
           <KeyValue rows={[
             ['Engine', info.engine === 'browser' ? 'browser (standalone)' : 'local Python service'],
-            ['Classifiers loaded', d.ready ? `${d.model_count} model(s)` : 'none'],
+            ['Face-forgery classifiers', d.ready ? `${d.model_count} model(s)` : 'none'],
+            ['AI-image classifiers', ai.ready ? `${ai.model_count} model(s)` : 'none'],
             ['Face analyzer', info.face_analyzer_ready ? 'ready (YuNet + SFace)' : 'unavailable'],
-            ['Trained on', d.trained_on ?? '—'],
-            ['Test set size', d.test_set_size?.toLocaleString() ?? '—'],
+            ['Face model data', d.trained_on ?? '—'],
+            ['AI-image model data', ai.trained_on ?? '—'],
           ]} />
           {d.ready && (
             <ul className="mt-4 pt-3 border-t space-y-1.5 text-[13px]" style={{ borderColor: 'var(--border)' }}>
@@ -32,6 +34,20 @@ export default function System() {
                   <span>{m.name}</span>
                   <span className="tnum" style={{ color: 'var(--ink-muted)' }}>
                     {m.metrics?.accuracy != null ? `${(m.metrics.accuracy * 100).toFixed(1)}% acc` : 'no metrics'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {ai.ready && (
+            <ul className="mt-4 pt-3 border-t space-y-1.5 text-[13px]" style={{ borderColor: 'var(--border)' }}>
+              {ai.models.map((m) => (
+                <li key={`ai-${m.arch}`} className="flex justify-between">
+                  <span>{m.name} <span style={{ color: 'var(--ink-muted)' }}>(AI image)</span></span>
+                  <span className="tnum" style={{ color: 'var(--ink-muted)' }}>
+                    {m.metrics?.balanced_accuracy != null
+                      ? `${(m.metrics.balanced_accuracy * 100).toFixed(1)}% balanced acc`
+                      : m.metrics?.accuracy != null ? `${(m.metrics.accuracy * 100).toFixed(1)}% acc` : 'no metrics'}
                   </span>
                 </li>
               ))}
@@ -107,8 +123,8 @@ export default function System() {
       <Panel title="Scope & Limitations">
         <ul className="space-y-2.5 text-[13px]" style={{ color: 'var(--ink-2)' }}>
           {[
-            'Trained on face-based forgery. Strong on face swaps and AI-generated faces; it is not a general "any AI image" detector.',
-            'Images with no detectable face are scored on the full frame, which is markedly less reliable — the report says so when this happens.',
+            'Separate model banks analyze face manipulation and full-frame AI generation; their evidence is kept distinct in each report.',
+            'The current AI-image model was trained on GPT Image 2 and Nano Banana 2 examples. Other generators and post-processing can reduce accuracy.',
             'C2PA is checked for presence only. Cryptographic validation against a trust list is not performed.',
             'Error Level Analysis is weak on PNGs and on heavily re-compressed images.',
             'A verdict is evidence, not proof. Treat it as one input to a human decision.',

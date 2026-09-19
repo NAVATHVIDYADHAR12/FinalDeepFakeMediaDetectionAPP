@@ -82,7 +82,8 @@ export default function Dashboard({ health }) {
                      centerValue={`${stats.authentic_pct}%`}
                      centerLabel="Authentic" />
               <p className="text-[11px] mt-4 pt-3 border-t" style={{ color: 'var(--ink-muted)', borderColor: 'var(--border)' }}>
-                Based on {stats.total_scans.toLocaleString()} scan{stats.total_scans === 1 ? '' : 's'} in this instance.
+                {`Based on ${stats.verified_scans.toLocaleString()} verified scan${stats.verified_scans === 1 ? '' : 's'}.`}
+                {stats.unverified_count > 0 && ` ${stats.unverified_count.toLocaleString()} historical scan${stats.unverified_count === 1 ? ' was' : 's were'} not verified and excluded.`}
               </p>
             </>
           )}
@@ -139,7 +140,7 @@ export default function Dashboard({ health }) {
               </div>
             </div>
             <div>
-              <div className="text-xs mb-1" style={{ color: 'var(--ink-muted)' }}>Confidence</div>
+              <div className="text-xs mb-1" style={{ color: 'var(--ink-muted)' }}>Model certainty</div>
               <div className="text-2xl figure">{last.confidence != null ? `${(last.confidence * 100).toFixed(0)}%` : "\u2014"}</div>
             </div>
             <div>

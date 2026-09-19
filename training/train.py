@@ -39,13 +39,17 @@ REAL_IDX, FAKE_IDX = 0, 1
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 
-# Tried in order; the first that loads wins. Guards against a dataset being
-# renamed or pulled, which would otherwise be a dead end for a non-technical user.
-DATASET_CANDIDATES = [
-    "JamieWithofs/Deepfake-and-real-images",
-    "JamieWithofs/Deepfake-and-real-images-4",
-    "Hemg/AI-Generated-vs-Real-Images-Datasets",
-]
+# Keep the two visual tasks explicit. A face-swap corpus cannot validate an
+# AI-image detector, and an AI-art corpus cannot validate face manipulation.
+DATASET_CANDIDATES = {
+    "face_manipulation": ["Sowaiba01/Deepfake"],
+    "ai_generation": ["zr-zhang/MLLM-Generated-Image-Detection-Dataset"],
+}
+DATASET_LICENSES = {
+    "Sowaiba01/Deepfake": "MIT",
+    "julienlucas/midjourney-dalle-sd-dataset": "MIT",
+    "zr-zhang/MLLM-Generated-Image-Detection-Dataset": "Apache-2.0",
+}
 
 DEFAULT_MODELS = ["efficientnet_b0", "legacy_xception", "mobilenetv3_large_100"]
 
@@ -56,10 +60,13 @@ def parse_args(argv=None) -> argparse.Namespace:
         description="Train deepfake detection models.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    p.add_argument("--n-train", type=int, default=45000,
-                   help="training images to use (the full set is ~140k)")
-    p.add_argument("--n-val", type=int, default=8000)
-    p.add_argument("--n-test", type=int, default=8000)
+    p.add_argument("--task", choices=sorted(DATASET_CANDIDATES),
+                   default="face_manipulation",
+                   help="train one explicit detection task; never mix their scores")
+    p.add_argument("--n-train", type=int, default=8000,
+                   help="training images to use (the full set is 10,852)")
+    p.add_argument("--n-val", type=int, default=1400)
+    p.add_argument("--n-test", type=int, default=1400)
     p.add_argument("--img-size", type=int, default=224)
     p.add_argument("--batch-size", type=int, default=64,
                    help="lower to 32 if the GPU runs out of memory")
@@ -78,6 +85,8 @@ def parse_args(argv=None) -> argparse.Namespace:
                    help="also produce omniguard_models.zip")
     p.add_argument("--no-pretrained", action="store_true",
                    help="train from scratch (much worse; for ablation only)")
+    p.add_argument("--allow-cpu", action="store_true",
+                   help="permit CPU training (intended only for tiny smoke tests)")
     return p.parse_args(argv)
 
 
@@ -90,14 +99,51 @@ def seed_everything(seed: int) -> None:
 
 
 # ----------------------------------------------------------------------- dataset
-def load_source(forced: str | None):
-    from datasets import load_dataset
+def load_source(forced: str | None, task: str):
+    # Repositories with thousands of small image files can otherwise emit one
+    # progress update per file.  That is harmless in a terminal but can make a
+    # Colab notebook tab effectively unresponsive while the GPU runtime keeps
+    # working in the background.
+    os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+    os.environ.setdefault("DATASETS_DISABLE_PROGRESS_BARS", "1")
 
-    candidates = [forced] if forced else DATASET_CANDIDATES
+    from datasets import Dataset, DatasetDict, Image as HFImage, disable_progress_bars, load_dataset
+    from huggingface_hub import snapshot_download
+
+    disable_progress_bars()
+
+    candidates = [forced] if forced else DATASET_CANDIDATES[task]
     for repo in candidates:
         try:
             print(f"  trying {repo} ...", flush=True)
-            ds = load_dataset(repo)
+            if repo == "Sowaiba01/Deepfake":
+                # The repository is a plain image-folder dataset. Downloading
+                # only its two class directories avoids a broken optional
+                # metadata file in the repository root.
+                local = snapshot_download(
+                    repo_id=repo, repo_type="dataset",
+                    allow_patterns=["fake/*.jpg", "real/*.jpg"],
+                    max_workers=32,
+                )
+                # Hugging Face snapshots expose their objects as symlinks.
+                # The imagefolder builder ignores those in some Colab/datasets
+                # combinations, so build the small metadata table explicitly.
+                fake_paths = sorted(Path(local).glob("fake/*.jpg"))
+                real_paths = sorted(Path(local).glob("real/*.jpg"))
+                image_paths = fake_paths + real_paths
+                if not fake_paths or not real_paths:
+                    raise RuntimeError("downloaded snapshot has no class images")
+                train = Dataset.from_dict({
+                    "image": [str(path) for path in image_paths],
+                    "label": [0] * len(fake_paths) + [1] * len(real_paths),
+                    # fake_N and real_N are paired. Keep N so make_splits can
+                    # prevent the same identity leaking into train and test.
+                    "pair_id": [path.stem.rsplit("_", 1)[-1]
+                                for path in image_paths],
+                }).cast_column("image", HFImage(decode=True))
+                ds = DatasetDict({"train": train})
+            else:
+                ds = load_dataset(repo)
             print(f"  loaded {repo}")
             return ds, repo
         except Exception as exc:                           # noqa: BLE001
@@ -108,8 +154,13 @@ def load_source(forced: str | None):
     )
 
 
-def resolve_label_column(ds) -> tuple[str, list[str], int]:
-    """Find the label column and work out which stored index means 'fake'."""
+def resolve_label_column(ds) -> tuple[str, list[str], set[int]]:
+    """Find the label column and all stored classes that mean synthetic.
+
+    Modern benchmarks often expose one class per generator (for example
+    ``GPT-Image2-fake`` and ``Nano-Banana2-fake``), not a single fake class.
+    They are collapsed into the backend's binary REAL/FAKE convention here.
+    """
     split = ds["train"]
     label_col = next(
         (c for c in ("label", "labels", "class", "target") if c in split.column_names),
@@ -119,35 +170,75 @@ def resolve_label_column(ds) -> tuple[str, list[str], int]:
         raise SystemExit(f"No label column found in {split.column_names}")
 
     names = list(getattr(split.features[label_col], "names", ["Fake", "Real"]))
-    fake_idx = next(
-        (i for i, n in enumerate(names) if str(n).lower().startswith("fake")), 0
-    )
-    return label_col, names, fake_idx
+    fake_indices = {
+        i for i, name in enumerate(names)
+        if any(token in str(name).strip().lower()
+               for token in ("fake", "synthetic", "ai-generated", "deepfake"))
+    }
+    if not fake_indices:
+        raise SystemExit(
+            f"Could not identify the fake class from labels {names}. "
+            "Refusing to guess the class mapping."
+        )
+    return label_col, names, fake_indices
 
 
 def make_splits(ds, args) -> dict:
     """Carve train/val/test, generating held-out splits if the source lacks them."""
-    def take(name, n, skip=0):
-        d = ds[name].shuffle(seed=args.seed)
-        end = min(skip + n, len(d))
-        return d.select(range(min(skip, len(d)), end))
-
-    train = take("train", args.n_train)
-
-    if "validation" in ds:
-        val = take("validation", args.n_val)
+    if "pair_id" in ds["train"].column_names:
+        source = ds["train"]
+        pair_ids = sorted(set(source["pair_id"]))
+        random.Random(args.seed).shuffle(pair_ids)
+        requested_pairs = {
+            "train": args.n_train // 2,
+            "val": args.n_val // 2,
+            "test": args.n_test // 2,
+        }
+        if sum(requested_pairs.values()) > len(pair_ids):
+            raise SystemExit(
+                f"Requested {sum(requested_pairs.values()) * 2:,} paired images, "
+                f"but the dataset contains only {len(pair_ids) * 2:,}."
+            )
+        groups, cursor = {}, 0
+        for name, count in requested_pairs.items():
+            groups[name] = set(pair_ids[cursor:cursor + count])
+            cursor += count
+        splits = {
+            name: source.select([
+                i for i, pair_id in enumerate(source["pair_id"])
+                if pair_id in ids
+            ])
+            for name, ids in groups.items()
+        }
     else:
-        val = take("train", args.n_val, skip=args.n_train)
+        def take(name, n, skip=0):
+            d = ds[name].shuffle(seed=args.seed)
+            end = min(skip + n, len(d))
+            return d.select(range(min(skip, len(d)), end))
 
-    if "test" in ds:
-        test = take("test", args.n_test)
-    else:
-        test = take("train", args.n_test, skip=args.n_train + args.n_val)
+        train = take("train", args.n_train)
 
-    return {"train": train, "val": val, "test": test}
+        if "validation" in ds:
+            val = take("validation", args.n_val)
+        else:
+            val = take("train", args.n_val, skip=args.n_train)
+
+        if "test" in ds:
+            test = take("test", args.n_test)
+        else:
+            test = take("train", args.n_test, skip=args.n_train + args.n_val)
+
+        splits = {"train": train, "val": val, "test": test}
+    for name, split in splits.items():
+        if len(split) == 0:
+            raise SystemExit(
+                f"The requested {name} split is empty. Reduce --n-train, "
+                "--n-val, or --n-test."
+            )
+    return splits
 
 
-def build_loaders(splits, label_col, fake_idx, args):
+def build_loaders(splits, label_col, fake_indices, args):
     import torch
     from torch.utils.data import DataLoader, Dataset
     from torchvision import transforms as T
@@ -193,7 +284,7 @@ def build_loaders(splits, label_col, fake_idx, args):
             img = row["image"]
             if not isinstance(img, Image.Image):
                 img = Image.open(img)
-            y = FAKE_IDX if row[label_col] == fake_idx else REAL_IDX
+            y = FAKE_IDX if row[label_col] in fake_indices else REAL_IDX
             return self.tf(img.convert("RGB")), y
 
     def loader(split, tf, shuffle):
@@ -290,9 +381,14 @@ def train_one(arch, loaders, device, args):
                 logits, _ = model(x)
                 loss = lossf(logits, y)
             scaler.scale(loss).backward()
+            scale_before = scaler.get_scale()
             scaler.step(opt)
             scaler.update()
-            sched.step()
+            # GradScaler skips optimizer.step when it detects an overflow.  In
+            # that case advancing OneCycleLR would put the schedule one update
+            # ahead of the weights and emits PyTorch's scheduler-order warning.
+            if scaler.get_scale() >= scale_before:
+                sched.step()
 
             total_loss += loss.item() * y.size(0)
             seen += y.size(0)
@@ -313,6 +409,12 @@ def train_one(arch, loaders, device, args):
         if val_acc > best_acc:
             best_acc = val_acc
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            checkpoint_dir = args.out / "checkpoints"
+            checkpoint_dir.mkdir(parents=True, exist_ok=True)
+            torch.save(
+                {"arch": arch, "best_val_accuracy": best_acc, "state_dict": best_state},
+                checkpoint_dir / f"{arch}.pt",
+            )
             print(f"  best so far ({val_acc:.4f}) - checkpointed")
 
     if best_state is not None:
@@ -403,7 +505,9 @@ def export_onnx(models, args, results, source, n_test, models_dir: Path) -> dict
     models_dir.mkdir(parents=True, exist_ok=True)
 
     manifest = {
+        "task": args.task,
         "source_dataset": source,
+        "source_license": DATASET_LICENSES.get(source, "CHECK_DATASET_CARD"),
         "class_index": {"0": "REAL", "1": "FAKE"},
         "img_size": args.img_size,
         "normalization": {"mean": IMAGENET_MEAN, "std": IMAGENET_STD},
@@ -427,7 +531,7 @@ def export_onnx(models, args, results, source, n_test, models_dir: Path) -> dict
             dynamic_axes={"input": {0: "batch"},
                           "logits": {0: "batch"},
                           "features": {0: "batch"}},
-            opset_version=17,
+            opset_version=18,
         )
         weights = model.classifier_weight()
         np.save(models_dir / f"{arch}_classifier_w.npy", weights)
@@ -497,14 +601,19 @@ def main(argv=None) -> int:
     else:
         print("  WARNING: no GPU detected. On CPU this will be extremely slow.")
         print("  In Colab: Runtime -> Change runtime type -> T4 GPU.")
+        if not args.allow_cpu:
+            raise SystemExit(
+                "No CUDA GPU detected. Refusing an accidental multi-day CPU run. "
+                "Use a Colab T4 GPU, or pass --allow-cpu only for a tiny smoke test."
+            )
     for k, v in vars(args).items():
         print(f"    {k:<16} {v}")
 
     print("\n[1/6] dataset")
-    ds, source = load_source(args.dataset)
-    label_col, class_names, fake_idx = resolve_label_column(ds)
+    ds, source = load_source(args.dataset, args.task)
+    label_col, class_names, fake_indices = resolve_label_column(ds)
     print(f"  label column '{label_col}', classes {class_names}, "
-          f"stored fake index {fake_idx}")
+          f"stored fake indices {sorted(fake_indices)}")
 
     splits = make_splits(ds, args)
     for name, split in splits.items():
@@ -514,7 +623,7 @@ def main(argv=None) -> int:
         print(f"  {name:<6} {len(split):>7,}  {pretty}")
 
     print("\n[2/6] data loaders")
-    loaders = build_loaders(splits, label_col, fake_idx, args)
+    loaders = build_loaders(splits, label_col, fake_indices, args)
     print(f"  {len(loaders[0])} training batches per epoch")
 
     print("\n[3/6] training")

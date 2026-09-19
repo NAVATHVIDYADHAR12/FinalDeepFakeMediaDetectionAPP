@@ -196,3 +196,52 @@ class TestCorruptionRecovery:
     def test_wal_mode_is_enabled(self):
         with db.session() as conn:
             assert conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
+
+
+class TestPlaceholderHistory:
+    def test_placeholder_model_history_is_unverified_without_mutating_storage(self):
+        report = {
+            "scan_id": "OLD-DUMMY", "media_type": "image", "filename": "old.jpg",
+            "verdict": "SUSPICIOUS", "risk_level": "HIGH", "fake_probability": 0.77,
+            "authenticity_score": 23.0, "confidence": 0.54, "faces_detected": 1,
+            "file_size_bytes": 10, "processing_ms": 2.0,
+            "faces": [{"face_id": 0, "verdict": "SUSPICIOUS",
+                       "fake_probability": 0.77, "heatmap_preview": "fake-heatmap",
+                       "models": [{"arch": "dummy_testnet", "fake_probability": 0.77}]}],
+            "findings": ["classifier verdict finding"],
+        }
+        db.save_scan(report)
+
+        listed = db.recent_scans(limit=10)
+        loaded = db.get_scan("OLD-DUMMY")
+        stats = db.stats()
+
+        assert listed[0]["verdict"] == "UNVERIFIED"
+        assert listed[0]["fake_probability"] is None
+        assert loaded["verdict"] == "UNVERIFIED"
+        assert loaded["fake_probability"] is None
+        assert loaded["faces"][0]["fake_probability"] is None
+        assert loaded["faces"][0]["heatmap_preview"] is None
+        assert "placeholder classifier" in loaded["findings"][0]["text"]
+        assert stats["total_scans"] == 1
+        assert stats["unverified_count"] == 1
+        assert stats["suspicious"] == stats["fake"] == stats["authentic"] == 0
+
+        with db.session() as conn:
+            stored = conn.execute(
+                "SELECT verdict, fake_probability FROM scans WHERE scan_id = ?",
+                ("OLD-DUMMY",),
+            ).fetchone()
+        assert stored["verdict"] == "SUSPICIOUS"
+        assert stored["fake_probability"] == 0.77
+
+    def test_verdict_filter_uses_the_normalized_verdict(self):
+        db.save_scan({
+            "scan_id": "OLD-DUMMY", "media_type": "image", "filename": "old.jpg",
+            "verdict": "SUSPICIOUS", "risk_level": "HIGH", "fake_probability": 0.77,
+            "authenticity_score": 23.0, "confidence": 0.54, "faces_detected": 1,
+            "file_size_bytes": 10, "processing_ms": 2.0,
+            "models": [{"arch": "dummy_testnet"}], "faces": [],
+        })
+        assert db.recent_scans(verdict="SUSPICIOUS") == []
+        assert db.recent_scans(verdict="UNVERIFIED")[0]["scan_id"] == "OLD-DUMMY"

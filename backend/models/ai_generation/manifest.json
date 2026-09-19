@@ -1,0 +1,38 @@
+{
+  "task": "ai_generation",
+  "source_model": "angelhd25/ull-ai-image-detector",
+  "source_dataset": "Community Forensics v13 with OpenFake, DiffusionDB, COCO, and Wikimedia hard negatives",
+  "source_license": "MIT model; upstream documents an OpenFake CC BY-NC 4.0 training-data caveat",
+  "class_index": {
+    "0": "AI_GENERATED"
+  },
+  "img_size": 384,
+  "resize_size": 440,
+  "normalization": {
+    "mean": [0.48145466, 0.4578275, 0.40821073],
+    "std": [0.26862954, 0.26130258, 0.27577711]
+  },
+  "output_type": "sigmoid_logit",
+  "decision_threshold": 0.65,
+  "confidence_kind": "threshold_calibrated_model_score",
+  "sha256": "6ca91ded511f0cfbf3ded2a7b76e37f62273c42cb42c303b1faf4933c53beeef",
+  "n_test_images": 800,
+  "metrics": {
+    "ENSEMBLE": {
+      "balanced_accuracy": 0.8704,
+      "ai_recall": 0.7611,
+      "real_recall": 0.9797
+    }
+  },
+  "models": [
+    {
+      "arch": "community_forensics_v13_fp32",
+      "file": "community_forensics_v13_fp32.onnx",
+      "metrics": {
+        "balanced_accuracy": 0.8704,
+        "ai_recall": 0.7611,
+        "real_recall": 0.9797
+      }
+    }
+  ]
+}

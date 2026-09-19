@@ -35,6 +35,7 @@ class TestSystemEndpoints:
         assert "detector" in body
         assert body["thresholds"]["fake"] > body["thresholds"]["suspicious"]
         assert ".jpg" in body["supported"]["image"]
+        assert ".jfif" in body["supported"]["image"]
         assert ".mp4" in body["supported"]["video"]
 
     def test_models_endpoint(self, client):
@@ -66,6 +67,16 @@ class TestScanEndpoints:
     def test_auto_route_picks_image(self, client, face_image_path):
         body = client.post("/api/scan", files=_upload(face_image_path)).json()
         assert body["media_type"] == "image"
+
+    def test_jfif_extension_is_accepted_as_jpeg(self, client, face_image_path):
+        response = client.post(
+            "/api/scan",
+            files={"file": ("shared-photo.jfif", face_image_path.read_bytes(), "image/jpeg")},
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["media_type"] == "image"
+        assert body["filename"] == "shared-photo.jfif"
 
     def test_auto_route_picks_video(self, client, video_path):
         """Regression: /api/scan used to call the /api/scan/video handler

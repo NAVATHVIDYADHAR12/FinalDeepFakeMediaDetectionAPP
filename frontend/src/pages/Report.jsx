@@ -15,23 +15,28 @@ function ScoreHero({ report }) {
   return (
     <div className="flex flex-wrap items-center gap-x-12 gap-y-5">
       <div>
-        <div className="text-xs mb-1.5" style={{ color: 'var(--ink-muted)' }}>Authenticity Score</div>
+        <div className="text-xs mb-1.5" style={{ color: 'var(--ink-muted)' }}>Model-estimated authenticity</div>
         <div className="text-5xl leading-none figure" style={{ color: meta.color }}>
           {scored ? `${report.authenticity_score}%` : '\u2014'}
         </div>
         <div className="text-xs mt-2" style={{ color: meta.color }}>
           {!scored ? 'No classifier available'
-            : report.verdict === 'AUTHENTIC' ? 'No manipulation detected'
+            : report.verdict === 'AUTHENTIC' ? 'No strong manipulation signal detected'
             : 'Likely AI-generated or edited'}
         </div>
       </div>
       <div>
-        <div className="text-xs mb-1.5" style={{ color: 'var(--ink-muted)' }}>Confidence</div>
+        <div className="text-xs mb-1.5" style={{ color: 'var(--ink-muted)' }}>
+          {report.confidence_kind === 'threshold_calibrated_model_score' ? 'AI likelihood'
+            : report.confidence_kind === 'uncalibrated_model_certainty' ? 'Model certainty' : 'Confidence'}
+        </div>
         <div className="text-4xl leading-none figure">
           {scored ? `${(report.confidence * 100).toFixed(0)}%` : '\u2014'}
         </div>
         <div className="text-xs mt-2" style={{ color: 'var(--ink-muted)' }}>
           {!scored ? 'Not measured'
+            : report.confidence_kind === 'threshold_calibrated_model_score' ? 'AI-generated threshold: 65%'
+            : report.confidence_kind === 'uncalibrated_model_certainty' ? 'Not calibrated across image sources'
             : report.confidence > 0.7 ? 'Very high'
             : report.confidence > 0.4 ? 'Moderate' : 'Low \u2014 treat with care'}
         </div>
@@ -165,7 +170,16 @@ export default function Report() {
         </div>
       )}
 
-      <Panel index={0}><ScoreHero report={report} /></Panel>
+      <Panel index={0}>
+        <ScoreHero report={report} />
+        {report.generation_analysis && (
+          <p className="text-xs mt-5 pt-4 border-t" style={{ color: 'var(--ink-muted)', borderColor: 'var(--border)' }}>
+            {report.decision_reliability === 'LIMITED'
+              ? 'Final verdict withheld because input quality can make the model unstable. The estimate is shown for inspection only.'
+              : 'AI detection is probabilistic, not proof. Realistic generation, resizing, screenshots and heavy compression can change the score; use provenance and source context alongside this result.'}
+          </p>
+        )}
+      </Panel>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <Panel index={1} title={isVideo ? 'Per-Frame Analysis' : 'Face Analysis'}>

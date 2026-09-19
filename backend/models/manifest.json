@@ -1,0 +1,129 @@
+{
+  "task": "face_manipulation",
+  "source_dataset": "Sowaiba01/Deepfake",
+  "source_license": "MIT",
+  "class_index": {
+    "0": "REAL",
+    "1": "FAKE"
+  },
+  "img_size": 224,
+  "normalization": {
+    "mean": [
+      0.485,
+      0.456,
+      0.406
+    ],
+    "std": [
+      0.229,
+      0.224,
+      0.225
+    ]
+  },
+  "config": {
+    "n_train": 8000,
+    "n_val": 1400,
+    "n_test": 1400,
+    "img_size": 224,
+    "batch_size": 64,
+    "epochs": 3,
+    "lr": 0.0003,
+    "label_smooth": 0.05,
+    "weight_decay": 0.0001,
+    "workers": 2,
+    "seed": 42,
+    "models": [
+      "efficientnet_b0",
+      "legacy_xception",
+      "mobilenetv3_large_100"
+    ],
+    "dataset": null,
+    "out": "out",
+    "zip": true,
+    "no_pretrained": false,
+    "allow_cpu": false
+  },
+  "metrics": {
+    "efficientnet_b0": {
+      "accuracy": 0.9692857142857143,
+      "precision": 0.9837997054491899,
+      "recall": 0.9542857142857143,
+      "f1": 0.9688179840464104,
+      "roc_auc": 0.9952928571428571
+    },
+    "legacy_xception": {
+      "accuracy": 0.995,
+      "precision": 0.9985611510791367,
+      "recall": 0.9914285714285714,
+      "f1": 0.9949820788530466,
+      "roc_auc": 0.9992806122448981
+    },
+    "mobilenetv3_large_100": {
+      "accuracy": 0.9871428571428571,
+      "precision": 0.9942028985507246,
+      "recall": 0.98,
+      "f1": 0.9870503597122302,
+      "roc_auc": 0.9981918367346939
+    },
+    "ENSEMBLE": {
+      "accuracy": 0.9971428571428571,
+      "precision": 0.998567335243553,
+      "recall": 0.9957142857142857,
+      "f1": 0.9971387696709585,
+      "roc_auc": 0.9989551020408163
+    }
+  },
+  "n_test_images": 1400,
+  "models": [
+    {
+      "arch": "efficientnet_b0",
+      "file": "efficientnet_b0.onnx",
+      "classifier_weight_file": "efficientnet_b0_classifier_w.npy",
+      "classifier_weight_shape": [
+        2,
+        1280
+      ],
+      "size_mb": 0.5,
+      "metrics": {
+        "accuracy": 0.9692857142857143,
+        "precision": 0.9837997054491899,
+        "recall": 0.9542857142857143,
+        "f1": 0.9688179840464104,
+        "roc_auc": 0.9952928571428571
+      }
+    },
+    {
+      "arch": "legacy_xception",
+      "file": "legacy_xception.onnx",
+      "classifier_weight_file": "legacy_xception_classifier_w.npy",
+      "classifier_weight_shape": [
+        2,
+        2048
+      ],
+      "size_mb": 0.3,
+      "metrics": {
+        "accuracy": 0.995,
+        "precision": 0.9985611510791367,
+        "recall": 0.9914285714285714,
+        "f1": 0.9949820788530466,
+        "roc_auc": 0.9992806122448981
+      }
+    },
+    {
+      "arch": "mobilenetv3_large_100",
+      "file": "mobilenetv3_large_100.onnx",
+      "classifier_weight_file": "mobilenetv3_large_100_classifier_w.npy",
+      "classifier_weight_shape": [
+        2,
+        1280
+      ],
+      "size_mb": 0.3,
+      "metrics": {
+        "accuracy": 0.9871428571428571,
+        "precision": 0.9942028985507246,
+        "recall": 0.98,
+        "f1": 0.9870503597122302,
+        "roc_auc": 0.9981918367346939
+      }
+    }
+  ]
+}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+import cv2
 
 import config as cfg
 import forensics
@@ -166,6 +167,15 @@ class TestTracker:
 
 # -------------------------------------------------------------------- detector
 class TestDetector:
+    def test_untrained_manifest_is_not_ready_outside_test_override(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(cfg, "MODELS_DIR", tmp_path)
+        (tmp_path / "manifest.json").write_text(
+            '{"dummy": true, "models": [{"arch": "dummy_testnet", "dummy": true}]}',
+            encoding="utf-8",
+        )
+        monkeypatch.delenv("OMNIGUARD_ALLOW_DUMMY_MODELS", raising=False)
+        assert not DeepfakeDetector().ready
+
     def test_loads_at_least_one_model(self, detector):
         assert detector.ready
         assert len(detector.models) >= 1
@@ -208,6 +218,36 @@ class TestDetector:
 
     def test_tiny_image_does_not_crash(self, detector):
         assert detector.predict(np.zeros((8, 8, 3), dtype=np.uint8))["verdict"]
+
+    def test_calibrated_binary_detector_exposes_ai_likelihood_not_distance(self):
+        class Session:
+            @staticmethod
+            def run(_outputs, _inputs):
+                # sigmoid(log(4)) == 0.8
+                return [np.array([[np.log(4.0)]], dtype=np.float32)]
+
+        detector = DeepfakeDetector.__new__(DeepfakeDetector)
+        detector.manifest = {
+            "output_type": "sigmoid_logit",
+            "confidence_kind": "threshold_calibrated_model_score",
+            "decision_threshold": 0.65,
+        }
+        detector.models = [{
+            "arch": "test_ai_detector",
+            "name": "Test AI detector",
+            "session": Session(),
+            "input_name": "input",
+            "classifier_weights": None,
+            "metrics": {},
+        }]
+
+        result = detector.predict(
+            np.zeros((32, 32, 3), dtype=np.uint8), want_heatmap=False
+        )
+        assert result["fake_probability"] == pytest.approx(0.8, abs=1e-4)
+        assert result["confidence"] == pytest.approx(0.8, abs=1e-4)
+        assert result["confidence_kind"] == "threshold_calibrated_model_score"
+        assert result["decision_threshold"] == 0.65
 
     def test_colorize_matches_input_size(self, detector, face_image):
         hm = detector.predict(face_image)["heatmap"]
@@ -263,6 +303,21 @@ class TestForensics:
 
     def test_ela_on_missing_file_is_handled(self, tmp_path):
         assert "error" in forensics.error_level_analysis(tmp_path / "nope.jpg")
+
+    def test_normal_resolution_image_has_quality_report(self, face_image_path, face_image):
+        quality = forensics.assess_input_quality(face_image_path, face_image)
+        assert quality["short_edge_px"] == 512
+        assert quality["reliability"] in {"STANDARD", "LIMITED"}
+        assert quality["bits_per_pixel"] > 0
+
+    def test_low_resolution_is_flagged_as_limited(self, tmp_path):
+        image = np.full((120, 160, 3), 127, dtype=np.uint8)
+        path = tmp_path / "tiny.jfif"
+        assert cv2.imwrite(str(path.with_suffix(".jpg")), image)
+        jpeg_path = path.with_suffix(".jpg")
+        quality = forensics.assess_input_quality(jpeg_path, image)
+        assert quality["reliability"] == "LIMITED"
+        assert any("upscale" in item for item in quality["limitations"])
 
 
 class TestFindings:

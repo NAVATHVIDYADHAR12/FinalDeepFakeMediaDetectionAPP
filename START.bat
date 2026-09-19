@@ -34,25 +34,55 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
+python -c "import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)" >nul 2>&1
+if errorlevel 1 (
+    echo  [X] Python was found, but it could not start or is older than 3.10.
+    echo      Install Python 3.10+ and make sure it is on PATH.
+    echo.
+    pause
+    exit /b 1
+)
 
 REM ------------------------------------------------------------ environment ---
-if not exist ".venv\Scripts\python.exe" (
+set "PY_ENV=.venv"
+if exist ".venv\Scripts\python.exe" (
+    .venv\Scripts\python.exe -c "import sys" >nul 2>&1
+    if errorlevel 1 (
+        echo  [!] Existing .venv belongs to another computer; keeping it intact.
+        echo      Creating a fresh environment in .venv-local instead.
+        set "PY_ENV=.venv-local"
+    )
+)
+
+if /i "%PY_ENV%"==".venv-local" if exist ".venv-local\Scripts\python.exe" (
+    .venv-local\Scripts\python.exe -c "import sys" >nul 2>&1
+    if errorlevel 1 (
+        echo  [X] The .venv-local environment is also invalid.
+        echo      Remove only this generated folder, then run START.bat again:
+        echo      .venv-local
+        echo.
+        pause
+        exit /b 1
+    )
+)
+
+if not exist "%PY_ENV%\Scripts\python.exe" (
     echo  [1/4] Creating the Python environment ^(one time, ~1 min^)...
-    python -m venv .venv
+    python -m venv "%PY_ENV%"
     if errorlevel 1 (
         echo  [X] Could not create the virtual environment.
         pause
         exit /b 1
     )
 ) else (
-    echo  [1/4] Python environment found.
+    echo  [1/4] Python environment found in %PY_ENV%.
 )
 
-.venv\Scripts\python.exe -c "import fastapi, onnxruntime, cv2" >nul 2>&1
+%PY_ENV%\Scripts\python.exe -c "import fastapi, onnxruntime, cv2" >nul 2>&1
 if errorlevel 1 (
     echo  [2/4] Installing dependencies ^(one time, ~3 min^)...
-    .venv\Scripts\python.exe -m pip install --quiet --upgrade pip
-    .venv\Scripts\python.exe -m pip install --quiet -r requirements.txt
+    %PY_ENV%\Scripts\python.exe -m pip install --quiet --upgrade pip
+    %PY_ENV%\Scripts\python.exe -m pip install --quiet -r requirements.txt
     if errorlevel 1 (
         echo  [X] Dependency installation failed. Scroll up for the reason.
         pause
@@ -91,7 +121,7 @@ if not exist "frontend\dist\index.html" (
 )
 
 REM ------------------------------------------------------------ model check ---
-.venv\Scripts\python.exe -c "import pathlib,sys; d=pathlib.Path('backend/models'); ex={'face_detection_yunet.onnx','face_recognition_sface.onnx'}; sys.exit(0 if [p for p in d.glob('*.onnx') if p.name not in ex] else 1)" >nul 2>&1
+%PY_ENV%\Scripts\python.exe -c "import json,pathlib,sys; d=pathlib.Path('backend/models'); m=json.loads((d/'manifest.json').read_text()) if (d/'manifest.json').exists() else {}; ex={'face_detection_yunet.onnx','face_recognition_sface.onnx'}; models=[p for p in d.glob('*.onnx') if p.name not in ex and not p.stem.startswith('dummy_')]; sys.exit(0 if models and not m.get('dummy',False) else 1)" >nul 2>&1
 if errorlevel 1 (
     echo.
     echo  ------------------------------------------------------------
@@ -106,6 +136,18 @@ if errorlevel 1 (
     echo  ------------------------------------------------------------
 )
 
+%PY_ENV%\Scripts\python.exe -c "import json,pathlib,sys; d=pathlib.Path('backend/models/ai_generation'); m=json.loads((d/'manifest.json').read_text()) if (d/'manifest.json').exists() else {}; models=list(d.glob('*.onnx')); sys.exit(0 if models and m.get('task')=='ai_generation' else 1)" >nul 2>&1
+if errorlevel 1 (
+    echo.
+    echo  ------------------------------------------------------------
+    echo   WARNING: no full-frame AI-image classifiers found.
+    echo.
+    echo   Face-swap detection can still work, but generated scenes cannot
+    echo   receive a neural verdict. Put the AI-generation model export in:
+    echo     backend\models\ai_generation\
+    echo  ------------------------------------------------------------
+)
+
 echo.
 echo  Starting server...
 echo  Opening http://127.0.0.1:8000 in your browser.
@@ -114,7 +156,7 @@ echo  Leave this window open. Press Ctrl+C here to stop.
 echo.
 
 start "" http://127.0.0.1:8000
-.venv\Scripts\python.exe backend\main.py
+%PY_ENV%\Scripts\python.exe backend\main.py
 
 echo.
 echo  Server stopped.

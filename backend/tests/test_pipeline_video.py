@@ -73,13 +73,53 @@ class TestImagePipeline:
 
 
 class TestImagePipelineEdgeCases:
-    def test_image_without_a_face_uses_full_frame(self, noise_image_path,
-                                                  detector, face_analyzer):
+    def test_face_only_model_does_not_score_no_face_full_frame(self, noise_image_path,
+                                                               detector, face_analyzer):
         report = pipeline.analyze_image(noise_image_path, detector, face_analyzer)
         assert report["faces_detected"] == 0
         assert len(report["faces"]) == 1
         assert report["faces"][0]["is_full_frame"] is True
+        assert report["verdict"] == "UNVERIFIED"
+        assert report["risk_level"] == "UNKNOWN"
+        assert report["fake_probability"] is None
+        assert report["confidence"] is None
+        assert report["faces"][0]["verdict"] == "UNVERIFIED"
         assert any("no face" in f["text"].lower() for f in report["findings"])
+
+    def test_ai_generation_model_scores_no_face_full_frame(self, noise_image_path,
+                                                            detector, face_analyzer):
+        class AIGenerationDetector:
+            ready = True
+            task = "ai_generation"
+            models = detector.models
+
+            @staticmethod
+            def supports(task):
+                return task == "ai_generation"
+
+            @staticmethod
+            def predict(image, want_heatmap=True):
+                result = detector.predict(image, want_heatmap=want_heatmap)
+                result["confidence_kind"] = "threshold_calibrated_model_score"
+                result["confidence"] = result["fake_probability"]
+                return result
+
+        report = pipeline.analyze_image(
+            noise_image_path, detector, face_analyzer,
+            ai_detector=AIGenerationDetector(),
+        )
+
+        assert report["faces_detected"] == 0
+        assert report["fake_probability"] is not None
+        # The 256px noise fixture is below the 384px classifier input size.
+        # It is scored for diagnostics, but the final verdict must abstain.
+        assert report["verdict"] == "UNVERIFIED"
+        assert report["decision_reliability"] == "LIMITED"
+        assert report["analysis_scope"] == ["ai_generation"]
+        assert report["generation_analysis"] is not None
+        assert report["confidence_kind"] == "threshold_calibrated_model_score"
+        assert report["confidence"] == report["fake_probability"]
+        assert all(model["arch"].startswith("ai:") for model in report["models"])
 
     def test_corrupt_file_raises_value_error(self, tmp_path, detector, face_analyzer):
         bad = tmp_path / "broken.jpg"

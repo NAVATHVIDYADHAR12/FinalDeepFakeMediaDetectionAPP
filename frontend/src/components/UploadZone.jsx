@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { api, formatBytes } from '../api.js'
 
-const IMAGE_EXT = ['.jpg', '.jpeg', '.png', '.bmp', '.webp', '.tiff']
+const IMAGE_EXT = ['.jpg', '.jpeg', '.jfif', '.png', '.bmp', '.webp', '.tiff']
 const VIDEO_EXT = ['.mp4', '.mov', '.avi', '.mkv', '.webm']
 
 /**
@@ -82,7 +82,7 @@ export default function UploadZone({ onComplete, compact = false, disabled = fal
               {disabled ? 'Detection unavailable — no models loaded' : 'Drag & drop your file here'}
             </p>
             <p className="text-xs mt-1.5 max-w-sm" style={{ color: 'var(--ink-muted)' }}>
-              Images: JPG, PNG, WEBP, BMP, TIFF · Videos: MP4, MOV, AVI, MKV, WEBM
+              Images: JPG, JPEG, JFIF, PNG, WEBP, BMP, TIFF · Videos: MP4, MOV, AVI, MKV, WEBM
             </p>
             {!disabled && (
               <span className="mt-4 px-5 py-2 rounded-lg text-sm font-medium"

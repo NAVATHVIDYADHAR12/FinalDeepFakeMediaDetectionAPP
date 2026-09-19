@@ -32,7 +32,7 @@ import video as video_mod     # noqa: E402
 from detector import DeepfakeDetector   # noqa: E402
 from faces import FaceAnalyzer          # noqa: E402
 
-STATE: dict = {"detector": None, "faces": None, "load_error": None}
+STATE: dict = {"detector": None, "ai_detector": None, "faces": None, "load_error": None}
 
 # Python's mimetype database predates woff2, so self-hosted fonts would be
 # served as application/octet-stream without this.
@@ -79,6 +79,17 @@ async def lifespan(_app: FastAPI):
         print("    Run notebooks/OmniGuard_Training.ipynb on Colab,")
         print("    then unzip omniguard_models.zip into backend/models/.")
         print("    The server still runs; scan endpoints will return 503.")
+
+    print("  loading AI-generation classifiers:")
+    ai_detector = DeepfakeDetector(cfg.AI_MODELS_DIR)
+    STATE["ai_detector"] = ai_detector
+    if ai_detector.ready and ai_detector.supports("ai_generation"):
+        print(f"  {len(ai_detector.models)} AI-image classifier(s) ready")
+    elif ai_detector.ready:
+        print("  ! ignored AI model bank: manifest task is not ai_generation")
+        ai_detector.models.clear()
+    else:
+        print("  ! no AI-generation model bank yet; no-face images stay UNVERIFIED")
 
     print(f"  {bootstrap.describe_environment()}")
     print("=" * 62)
@@ -167,10 +178,13 @@ def _strip_private(report: dict) -> dict:
 @app.get("/api/health")
 def health():
     det = STATE["detector"]
+    ai_det = STATE["ai_detector"]
     return {
         "status": "ok",
         "models_loaded": bool(det and det.ready),
         "model_count": len(det.models) if det else 0,
+        "ai_models_loaded": bool(ai_det and ai_det.ready),
+        "ai_model_count": len(ai_det.models) if ai_det else 0,
         "face_analyzer": STATE["faces"] is not None,
     }
 
@@ -178,8 +192,10 @@ def health():
 @app.get("/api/system/info")
 def system_info():
     det = STATE["detector"]
+    ai_det = STATE["ai_detector"]
     return {
         "detector": det.info() if det else {"ready": False},
+        "ai_detector": ai_det.info() if ai_det else {"ready": False},
         "face_analyzer_ready": STATE["faces"] is not None,
         "thresholds": {
             "suspicious": cfg.SUSPICIOUS_THRESHOLD,
@@ -225,7 +241,7 @@ def _run_image_scan(file: UploadFile) -> dict:
     detector, faces = _require_detector(), _require_faces()
     path = _save_upload(file, cfg.ALLOWED_IMAGE_EXT)
     try:
-        report = pipeline.analyze_image(path, detector, faces)
+        report = pipeline.analyze_image(path, detector, faces, ai_detector=STATE["ai_detector"])
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:

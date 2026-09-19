@@ -24,7 +24,7 @@ const uid = () =>
 
 const nowISO = () => new Date().toISOString().replace(/\.\d+Z$/, '+00:00')
 
-const IMAGE_EXT = ['jpg', 'jpeg', 'png', 'bmp', 'webp', 'tiff']
+const IMAGE_EXT = ['jpg', 'jpeg', 'jfif', 'png', 'bmp', 'webp', 'tiff']
 const VIDEO_EXT = ['mp4', 'mov', 'avi', 'mkv', 'webm']
 
 /** Downscaled data URL, so stored reports stay a sensible size. */
@@ -252,6 +252,14 @@ export async function analyze(file) {
 export function systemInfo() {
   return {
     detector: {
+      ready: false,
+      model_count: 0,
+      models: [],
+      trained_on: null,
+      test_set_size: null,
+      ensemble_metrics: {},
+    },
+    ai_detector: {
       ready: false,
       model_count: 0,
       models: [],

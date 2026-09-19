@@ -10,6 +10,7 @@ from pathlib import Path
 BACKEND_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = BACKEND_DIR.parent
 MODELS_DIR = BACKEND_DIR / "models"
+AI_MODELS_DIR = MODELS_DIR / "ai_generation"
 
 # Writable state. Containers often mount a volume elsewhere, or have a
 # read-only image with only /tmp writable, so the location is overridable.
@@ -18,7 +19,7 @@ UPLOAD_DIR = DATA_DIR / "uploads"
 EVIDENCE_DIR = DATA_DIR / "evidence"
 DB_PATH = DATA_DIR / "omniguard.db"
 
-for _d in (DATA_DIR, UPLOAD_DIR, EVIDENCE_DIR, MODELS_DIR):
+for _d in (DATA_DIR, UPLOAD_DIR, EVIDENCE_DIR, MODELS_DIR, AI_MODELS_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 
 # --- deployment ---
@@ -90,7 +91,7 @@ TRACK_IOU_THRESHOLD = 0.30
 
 # --- uploads ---
 MAX_UPLOAD_MB = 200
-ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tiff"}
+ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".jfif", ".png", ".bmp", ".webp", ".tiff"}
 ALLOWED_VIDEO_EXT = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 
 

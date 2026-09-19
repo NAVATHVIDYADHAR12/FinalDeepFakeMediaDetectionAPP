@@ -2,7 +2,9 @@
 __pycache__/
 *.py[cod]
 .venv/
+.venv-local/
 .pytest_cache/
+.pytest-run-*/
 
 # Local scratch space (this project keeps temp on D: because C: is full)
 .tmp/
@@ -28,8 +30,10 @@ backend/data/
 # training run and are specific to each training. Drop them into
 # backend/models/ and they are picked up automatically.
 backend/models/*.onnx
+backend/models/*.onnx.data
 backend/models/*.npy
 backend/models/manifest.json
+backend/models/metrics/
 !backend/models/face_detection_yunet.onnx
 !backend/models/face_recognition_sface.onnx
 
