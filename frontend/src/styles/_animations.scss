@@ -274,6 +274,40 @@ $sos-dash: 0 0 20px -4px currentColor;
 
 .draw-arc { transition: stroke-dasharray 0.9s $ease-out-quint; }
 
+// Landing headings replay whenever they leave and re-enter the viewport. Each
+// word owns a perspective transform and alternates sides, producing a readable
+// editorial flip rather than rotating the whole line as one slab.
+.flip-heading { perspective: 900px; }
+.flip-heading__mask {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+  padding: .1em .04em .13em;
+  margin: -.1em -.04em -.13em;
+}
+.flip-heading__word {
+  display: inline-block;
+  opacity: 0;
+  transform: translate3d(var(--flip-x), 40px, 0) rotateY(var(--flip-y));
+  transform-origin: center bottom;
+  will-change: transform, opacity;
+}
+.flip-heading.is-visible .flip-heading__word {
+  animation: word-side-flip .78s cubic-bezier(.16,1,.3,1) both;
+  animation-delay: calc(var(--word-i) * 75ms);
+}
+@keyframes word-side-flip {
+  0% { opacity: 0; transform: translate3d(var(--flip-x), 38px, 0) rotateY(var(--flip-y)); filter: blur(7px); }
+  58% { opacity: 1; }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) rotateY(0); filter: blur(0); }
+}
+
+.stat-prism.is-counting .figure { animation: stat-arrival .72s cubic-bezier(.16,1,.3,1) both; }
+@keyframes stat-arrival {
+  from { opacity: .15; transform: translateY(16px) scale(.82); filter: blur(5px); }
+  to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+
 // ------------------------------------------------------------- interactions
 .lift {
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
@@ -303,9 +337,11 @@ $sos-dash: 0 0 20px -4px currentColor;
   .pop-in, .bubble-in, .typing-dot, .halo, .shimmer, .glow-pulse, .sos-glow,
   .headline-animated, .letter-reveal > span,
   .spark-sweep::before, .spark-sweep::after, .ensemble-stage__orbit,
-  .future-footer__scan {
+  .future-footer__scan, .flip-heading__word, .stat-prism.is-counting .figure {
     animation: none !important;
   }
+
+  .flip-heading__word { opacity: 1 !important; transform: none !important; filter: none !important; }
 
   .draw-arc { transition: none !important; }
   .lift:hover { transform: none; }

@@ -9,7 +9,7 @@ import Footer from '../components/Footer.jsx'
 import Marquee from '../components/Marquee.jsx'
 import TiltCard from '../components/TiltCard.jsx'
 import { useScroller } from '../ScrollContext.js'
-import { prefersReducedMotion, useCountUp, useInView } from '../hooks.js'
+import { prefersReducedMotion, useCountUp, useRepeatInView } from '../hooks.js'
 
 gsap.registerPlugin(ScrollTrigger)
 
@@ -122,10 +122,14 @@ const STATS = [
 ]
 
 function AnimatedStat({ stat, index }) {
-  const [ref, inView] = useInView({ threshold: 0.45 })
-  const count = useCountUp(stat.value, { duration: 1150 + index * 150, start: inView })
+  const [ref, inView] = useRepeatInView({ threshold: 0.45 })
+  const count = useCountUp(stat.value, {
+    duration: 1150 + index * 150,
+    start: inView,
+    resetOnStop: true,
+  })
   return (
-    <div ref={ref} className="stat-prism panel p-5 text-center lift" style={{ '--stat-i': index }}>
+    <div ref={ref} className={`stat-prism panel p-5 text-center lift ${inView ? 'is-counting' : ''}`} style={{ '--stat-i': index }}>
       <div className="stat-prism__glow" aria-hidden="true" />
       <div className="figure text-3xl mb-1 relative" style={{ color: 'var(--brand)' }}>
         {stat.prefix}{Math.round(count)}{stat.suffix}
@@ -134,6 +138,25 @@ function AnimatedStat({ stat, index }) {
       <div className="text-[9px] tracking-[.12em] uppercase mt-2 relative"
            style={{ color: 'var(--ink-muted)' }}>{stat.detail}</div>
     </div>
+  )
+}
+
+function RepeatFlipHeading({ text, className = '', style }) {
+  const [ref, inView] = useRepeatInView({ threshold: 0.5, rootMargin: '0px 0px -5% 0px' })
+  return (
+    <h2 ref={ref} className={`flip-heading ${inView ? 'is-visible' : ''} ${className}`} style={style}>
+      {text.split(/\s+/).map((word, index) => (
+        <Fragment key={`${word}-${index}`}>
+          <span className="flip-heading__mask">
+            <span className="flip-heading__word"
+                  style={{ '--word-i': index, '--flip-x': index % 2 ? '52px' : '-52px', '--flip-y': index % 2 ? '-64deg' : '64deg' }}>
+              {word}
+            </span>
+          </span>
+          {index < text.split(/\s+/).length - 1 && ' '}
+        </Fragment>
+      ))}
+    </h2>
   )
 }
 
@@ -284,10 +307,8 @@ function SectionHeading({ eyebrow, title, body, align = 'left' }) {
              style={{ color: 'var(--brand)' }}>
           {eyebrow}
         </div>
-        <h2 className="font-display font-bold leading-tight mb-4"
-            style={{ fontSize: 'clamp(1.7rem, 3.6vw, 2.7rem)' }}>
-          {title}
-        </h2>
+        <RepeatFlipHeading text={title} className="font-display font-bold leading-tight mb-4"
+                           style={{ fontSize: 'clamp(1.7rem, 3.6vw, 2.7rem)' }} />
         <p className="text-[15px] leading-relaxed" style={{ color: 'var(--ink-2)' }}>
           {body}
         </p>
@@ -482,10 +503,9 @@ export default function Landing() {
           <Reveal from="up" className="text-center mb-14">
             <div className="text-[11px] tracking-[0.24em] font-display mb-3"
                  style={{ color: 'var(--brand)' }}>CAPABILITIES</div>
-            <h2 className="font-display font-bold headline"
-                style={{ fontSize: 'clamp(1.8rem, 4vw, 3rem)' }}>
-              Everything the report is built from
-            </h2>
+            <RepeatFlipHeading text="Everything the report is built from"
+                               className="font-display font-bold headline"
+                               style={{ fontSize: 'clamp(1.8rem, 4vw, 3rem)' }} />
           </Reveal>
 
           <Reveal stagger={0.22} from="scale"
@@ -585,10 +605,9 @@ export default function Landing() {
           <Reveal from="up" className="text-center mb-14">
             <div className="text-[11px] tracking-[0.24em] font-display mb-3"
                  style={{ color: 'var(--brand)' }}>HOW IT WORKS</div>
-            <h2 className="font-display font-bold headline"
-                style={{ fontSize: 'clamp(1.8rem, 4vw, 3rem)' }}>
-              Six steps, about two hundred milliseconds
-            </h2>
+            <RepeatFlipHeading text="Six steps, about two hundred milliseconds"
+                               className="font-display font-bold headline"
+                               style={{ fontSize: 'clamp(1.8rem, 4vw, 3rem)' }} />
           </Reveal>
 
           <Reveal stagger={0.2} from="left"
@@ -638,10 +657,9 @@ export default function Landing() {
           <div className="panel p-12 relative overflow-hidden">
             <div className="absolute inset-0 pointer-events-none" aria-hidden="true"
                  style={{ background: 'radial-gradient(ellipse 70% 100% at 50% 0%, rgba(0,240,255,.14), transparent 70%)' }} />
-            <h2 className="font-display font-bold mb-4 relative headline-animated"
-                style={{ fontSize: 'clamp(1.7rem, 4vw, 2.6rem)' }}>
-              Verify something now
-            </h2>
+            <RepeatFlipHeading text="Verify something now"
+                               className="font-display font-bold mb-4 relative headline-animated"
+                               style={{ fontSize: 'clamp(1.7rem, 4vw, 2.6rem)' }} />
             <p className="text-[15px] mb-8 relative" style={{ color: 'var(--ink-2)' }}>
               Drop in an image or a video clip. Everything runs on this machine — no upload,
               no account, no cloud.

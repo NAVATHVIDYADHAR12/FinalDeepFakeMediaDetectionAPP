@@ -43,6 +43,29 @@ export function useInView({ threshold = 0.12, rootMargin = '0px 0px -40px 0px' }
   return [ref, inView]
 }
 
+/** Tracks every viewport entry/exit so animations can deliberately replay. */
+export function useRepeatInView({ threshold = 0.28, rootMargin = '0px 0px -8% 0px' } = {}) {
+  const ref = useRef(null)
+  const [inView, setInView] = useState(false)
+
+  useEffect(() => {
+    const node = ref.current
+    if (!node) return
+    if (typeof IntersectionObserver === 'undefined' || prefersReducedMotion()) {
+      setInView(true)
+      return
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => setInView(entry.isIntersecting),
+      { threshold, rootMargin },
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [threshold, rootMargin])
+
+  return [ref, inView]
+}
+
 /**
  * Counts a number up to its target.
  *
@@ -50,14 +73,17 @@ export function useInView({ threshold = 0.12, rootMargin = '0px 0px -40px 0px' }
  * stopping dead. Skipped entirely under reduced motion, and re-runs whenever
  * the target changes so live-updating stats stay correct.
  */
-export function useCountUp(target, { duration = 900, start = false } = {}) {
+export function useCountUp(target, { duration = 900, start = false, resetOnStop = false } = {}) {
   const [value, setValue] = useState(0)
   const frameRef = useRef(null)
 
   useEffect(() => {
     const end = Number(target) || 0
 
-    if (!start) return
+    if (!start) {
+      if (resetOnStop) setValue(0)
+      return
+    }
     if (prefersReducedMotion() || end === 0) {
       setValue(end)
       return
@@ -74,7 +100,7 @@ export function useCountUp(target, { duration = 900, start = false } = {}) {
 
     frameRef.current = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frameRef.current)
-  }, [target, duration, start])
+  }, [target, duration, start, resetOnStop])
 
   return value
 }
