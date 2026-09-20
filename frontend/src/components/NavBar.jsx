@@ -252,6 +252,7 @@ export default function NavBar({ health, isLanding = false }) {
                 aria-hidden="true" />
           <span style={{ color: 'var(--ink-2)' }} className="whitespace-nowrap hidden md:inline">
             {health == null ? 'Connecting…'
+              : health.service_unavailable ? 'Service waking…'
               : health.engine === 'browser' ? 'Standalone mode'
               : ok ? `${health.model_count} model${health.model_count === 1 ? '' : 's'} online`
                    : 'No models'}

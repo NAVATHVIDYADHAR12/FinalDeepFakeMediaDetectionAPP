@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 
-import { api } from './api.js'
+import { api, REMOTE_BACKEND_CONFIGURED } from './api.js'
 import Assistant from './components/Assistant.jsx'
 import NavBar from './components/NavBar.jsx'
 import ScrollTop from './components/ScrollTop.jsx'
@@ -148,7 +148,15 @@ export default function App() {
     // engine:'browser'. A rejection here means something unexpected broke.
     const poll = () => api.health()
       .then((h) => alive && setHealth(h))
-      .catch(() => alive && setHealth({ engine: 'browser', models_loaded: false, model_count: 0 }))
+      .catch((error) => alive && setHealth(REMOTE_BACKEND_CONFIGURED
+        ? {
+            engine: 'remote',
+            service_unavailable: true,
+            models_loaded: false,
+            model_count: 0,
+            error: error?.message || 'Detection service is not responding',
+          }
+        : { engine: 'browser', models_loaded: false, model_count: 0 }))
     poll()
     const id = setInterval(poll, 15000)
     return () => { alive = false; clearInterval(id) }

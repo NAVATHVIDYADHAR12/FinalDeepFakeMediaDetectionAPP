@@ -12,8 +12,16 @@
  */
 import * as engine from './engine/index.js'
 
-export const API_BASE = (import.meta.env?.VITE_API_BASE ?? '').replace(/\/$/, '')
-const REMOTE_BACKEND_CONFIGURED = Boolean(API_BASE)
+const ENV_API_BASE = import.meta.env?.VITE_API_BASE ?? ''
+const VERCEL_HOST = typeof window !== 'undefined'
+  && /(^|\.)final-deep-fake-media-detection(?:-app)?(?:-[a-z0-9]+)?\.vercel\.app$/i
+    .test(window.location.hostname)
+const HOSTED_API_FALLBACK = VERCEL_HOST
+  ? 'https://omniguard-ai-backend.onrender.com'
+  : ''
+
+export const API_BASE = (ENV_API_BASE || HOSTED_API_FALLBACK).replace(/\/$/, '')
+export const REMOTE_BACKEND_CONFIGURED = Boolean(API_BASE)
 
 /** Prefix a path with the configured API origin. */
 export const apiUrl = (path) => `${API_BASE}${path}`

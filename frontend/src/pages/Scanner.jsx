@@ -1,5 +1,5 @@
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { StandaloneNotice, ModelsMissing, Panel } from '../components/ui.jsx'
+import { StandaloneNotice, ServiceUnavailableNotice, ModelsMissing, Panel } from '../components/ui.jsx'
 import UploadZone from '../components/UploadZone.jsx'
 
 const COPY = {
@@ -24,7 +24,8 @@ export default function Scanner({ health }) {
 
   return (
     <div className="max-w-3xl mx-auto space-y-5">
-      {health?.engine === 'browser' ? <StandaloneNotice />
+      {health?.service_unavailable ? <ServiceUnavailableNotice detail={health.error} />
+        : health?.engine === 'browser' ? <StandaloneNotice />
         : health && !health.models_loaded ? <ModelsMissing /> : null}
 
       <Panel title={copy.title}>

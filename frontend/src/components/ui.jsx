@@ -123,6 +123,30 @@ export function ModelsMissing() {
   )
 }
 
+/** A hosted backend can briefly be unreachable while a free Render instance
+ * wakes. This is never presented as browser-only detection: hosted scans must
+ * either use the trained service or fail honestly. App.jsx retries every 15s. */
+export function ServiceUnavailableNotice({ detail }) {
+  return (
+    <div className="panel p-6 rise"
+         style={{ borderColor: 'color-mix(in srgb, var(--warning) 40%, transparent)' }}>
+      <div className="flex items-start gap-3">
+        <span className="spin mt-0.5 w-4 h-4 rounded-full border-2 border-current border-t-transparent"
+              style={{ color: 'var(--warning)' }} aria-hidden="true" />
+        <div>
+          <h3 className="font-semibold mb-1">Detection service is waking up</h3>
+          <p className="text-sm" style={{ color: 'var(--ink-2)' }}>
+            The hosted model service can take about 50 seconds to resume after inactivity.
+            OmniGuard is reconnecting automatically; uploads stay disabled until the trained
+            classifiers are online, so no scan can silently fall back to a model-free verdict.
+          </p>
+          {detail && <p className="text-[11px] mt-2" style={{ color: 'var(--ink-muted)' }}>{detail}</p>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /**
  * Shown when the Python service is not reachable and the app is running on its
  * own. It is not an error state: metadata, compression and provenance checks

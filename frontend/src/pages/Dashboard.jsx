@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import { api, timeAgo } from '../api.js'
 import { Donut } from '../components/charts.jsx'
-import { StandaloneNotice, EmptyState, ModelsMissing, Panel, Spinner, StatTile, VerdictBadge } from '../components/ui.jsx'
+import { StandaloneNotice, ServiceUnavailableNotice, EmptyState, ModelsMissing, Panel, Spinner, StatTile, VerdictBadge } from '../components/ui.jsx'
 import UploadZone from '../components/UploadZone.jsx'
 
 export default function Dashboard({ health }) {
@@ -43,7 +43,8 @@ export default function Dashboard({ health }) {
 
   return (
     <div className="space-y-5">
-      {health?.engine === 'browser' ? <StandaloneNotice />
+      {health?.service_unavailable ? <ServiceUnavailableNotice detail={health.error} />
+        : health?.engine === 'browser' ? <StandaloneNotice />
         : health && !health.models_loaded ? <ModelsMissing /> : null}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
