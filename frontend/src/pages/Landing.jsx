@@ -502,9 +502,10 @@ export default function Landing() {
           <Reveal from="up" className="text-center mb-14">
             <div className="text-[11px] tracking-[0.24em] font-display mb-3"
                  style={{ color: 'var(--brand)' }}>CAPABILITIES</div>
-            <RepeatFlipHeading text="Everything the report is built from"
-                               className="font-display font-bold headline"
-                               style={{ fontSize: 'clamp(1.8rem, 4vw, 3rem)' }} />
+            <h2 className="font-display font-bold headline leading-tight"
+                style={{ fontSize: 'clamp(1.8rem, 4vw, 3rem)' }}>
+              Everything the report is built from
+            </h2>
           </Reveal>
 
           <Reveal stagger={0.14} duration={0.72} from="scale" start="top 92%"
@@ -656,9 +657,10 @@ export default function Landing() {
           <div className="panel p-12 relative overflow-hidden">
             <div className="absolute inset-0 pointer-events-none" aria-hidden="true"
                  style={{ background: 'radial-gradient(ellipse 70% 100% at 50% 0%, rgba(0,240,255,.14), transparent 70%)' }} />
-            <RepeatFlipHeading text="Verify something now"
-                               className="font-display font-bold mb-4 relative headline-animated"
-                               style={{ fontSize: 'clamp(1.7rem, 4vw, 2.6rem)' }} />
+            <h2 className="font-display font-bold mb-4 relative headline-animated leading-tight"
+                style={{ fontSize: 'clamp(1.7rem, 4vw, 2.6rem)' }}>
+              Verify something now
+            </h2>
             <p className="text-[15px] mb-8 relative" style={{ color: 'var(--ink-2)' }}>
               Drop in an image or a video clip. Everything runs on this machine — no upload,
               no account, no cloud.
