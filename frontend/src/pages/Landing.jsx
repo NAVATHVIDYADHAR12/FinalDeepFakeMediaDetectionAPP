@@ -143,17 +143,16 @@ function AnimatedStat({ stat, index }) {
 
 function RepeatFlipHeading({ text, className = '', style }) {
   const [ref, inView] = useRepeatInView({ threshold: 0.5, rootMargin: '0px 0px -5% 0px' })
+  const words = text.split(/\s+/)
   return (
     <h2 ref={ref} className={`flip-heading ${inView ? 'is-visible' : ''} ${className}`} style={style}>
-      {text.split(/\s+/).map((word, index) => (
+      {words.map((word, index) => (
         <Fragment key={`${word}-${index}`}>
-          <span className="flip-heading__mask">
-            <span className="flip-heading__word"
-                  style={{ '--word-i': index, '--flip-x': index % 2 ? '52px' : '-52px', '--flip-y': index % 2 ? '-64deg' : '64deg' }}>
-              {word}
-            </span>
+          <span className="flip-heading__word"
+                style={{ '--word-i': index, '--flip-x': index % 2 ? '30px' : '-30px', '--flip-y': index % 2 ? '-48deg' : '48deg' }}>
+            {word}
           </span>
-          {index < text.split(/\s+/).length - 1 && ' '}
+          {index < words.length - 1 && ' '}
         </Fragment>
       ))}
     </h2>
@@ -508,7 +507,7 @@ export default function Landing() {
                                style={{ fontSize: 'clamp(1.8rem, 4vw, 3rem)' }} />
           </Reveal>
 
-          <Reveal stagger={0.22} from="scale"
+          <Reveal stagger={0.14} duration={0.72} from="scale" start="top 92%"
                   className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {CAPABILITIES.map((c, i) => (
               <TiltCard key={c.title} className="h-full report-card-wrap">
@@ -610,10 +609,10 @@ export default function Landing() {
                                style={{ fontSize: 'clamp(1.8rem, 4vw, 3rem)' }} />
           </Reveal>
 
-          <Reveal stagger={0.2} from="left"
-                  className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          <Reveal stagger={0.1} duration={0.68} from="left" start="top 92%"
+                  className="pipeline-grid grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {PIPELINE.map((s) => (
-              <div key={s.n} className="panel p-6 lift relative overflow-hidden">
+              <div key={s.n} className="panel p-6 lift relative overflow-hidden min-h-[150px]">
                 <div className="figure absolute -top-2 right-3 text-[56px] leading-none select-none"
                      style={{ color: 'rgba(0,240,255,.07)' }} aria-hidden="true">{s.n}</div>
                 <h3 className="font-display font-semibold mb-2 relative">{s.title}</h3>
@@ -666,13 +665,13 @@ export default function Landing() {
             </p>
             {/* The spark runs continuously, hovered or not. */}
             <Link to="/scan"
-                  className="inline-flex items-center px-8 py-3.5 rounded-full text-sm font-semibold press relative spark-sweep"
+                  className="cta-primary inline-flex items-center justify-center px-8 py-3.5 rounded-full text-sm font-semibold press relative spark-sweep"
                   style={{
                     background: 'linear-gradient(135deg, var(--brand), var(--brand-2))',
                     color: 'var(--on-accent)',
                     boxShadow: '0 0 40px -10px rgba(0,240,255,.8)',
                   }}>
-              <span>Open the scanner</span>
+              <span className="cta-primary__label">Open the scanner</span>
             </Link>
           </div>
         </Reveal>

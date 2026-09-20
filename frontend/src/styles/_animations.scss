@@ -278,28 +278,37 @@ $sos-dash: 0 0 20px -4px currentColor;
 // word owns a perspective transform and alternates sides, producing a readable
 // editorial flip rather than rotating the whole line as one slab.
 .flip-heading { perspective: 900px; }
-.flip-heading__mask {
-  display: inline-block;
-  overflow: hidden;
-  vertical-align: bottom;
-  padding: .1em .04em .13em;
-  margin: -.1em -.04em -.13em;
-}
 .flip-heading__word {
   display: inline-block;
-  opacity: 0;
-  transform: translate3d(var(--flip-x), 40px, 0) rotateY(var(--flip-y));
-  transform-origin: center bottom;
-  will-change: transform, opacity;
+  // Visible is the safe resting state. Re-entering adds an animation whose
+  // first frame supplies opacity:0; if JS or IntersectionObserver is ever
+  // interrupted, headings remain readable rather than permanently hidden.
+  opacity: 1;
+  transform: none;
+  transform-origin: center center;
 }
 .flip-heading.is-visible .flip-heading__word {
-  animation: word-side-flip .78s cubic-bezier(.16,1,.3,1) both;
-  animation-delay: calc(var(--word-i) * 75ms);
+  animation: word-side-flip .66s cubic-bezier(.16,1,.3,1) both;
+  animation-delay: calc(var(--word-i) * 62ms);
 }
 @keyframes word-side-flip {
-  0% { opacity: 0; transform: translate3d(var(--flip-x), 38px, 0) rotateY(var(--flip-y)); filter: blur(7px); }
+  0% { opacity: 0; transform: translate3d(var(--flip-x), 8px, 0) rotateY(var(--flip-y)); filter: blur(4px); }
   58% { opacity: 1; }
   100% { opacity: 1; transform: translate3d(0, 0, 0) rotateY(0); filter: blur(0); }
+}
+
+.pipeline-grid { grid-auto-rows: 1fr; }
+.pipeline-grid > * { min-width: 0; }
+
+.cta-primary {
+  min-width: 176px;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+.cta-primary__label {
+  display: block;
+  color: var(--on-accent);
+  text-shadow: 0 1px 1px rgba(255,255,255,.16), 0 1px 3px rgba(3,7,18,.25);
 }
 
 .stat-prism.is-counting .figure { animation: stat-arrival .72s cubic-bezier(.16,1,.3,1) both; }
