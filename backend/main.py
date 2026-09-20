@@ -472,10 +472,10 @@ async def text_analyze(text: str = Form(...),
 
     The three results are not equivalent in strength, and the response keeps
     them separate for that reason. Plagiarism overlap is an exact measurement
-    against the supplied reference. The AI figure is a summary of stylistic
-    statistics that no detector can turn into proof. The news figure is
-    narrower still: it describes how a passage is written and cannot check a
-    single claim against the world.
+    against the supplied reference. The AI figure combines a trained text
+    classifier with supporting stylistic statistics, but remains probabilistic.
+    The news figure is narrower still: it describes how a passage is written
+    and cannot check a single claim against the world.
     """
     if len(text) > 200_000:
         raise HTTPException(status_code=413,

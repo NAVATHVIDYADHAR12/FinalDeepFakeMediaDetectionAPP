@@ -123,20 +123,22 @@ class TestAiIndicators:
 
     def test_every_signal_is_reported_with_its_weight(self):
         r = textcheck.check_ai_text(LLM)
-        assert len(r["signals"]) == 6
+        assert len(r["signals"]) == 7
         for s in r["signals"]:
             assert 0 <= s["strength"] <= 100
             assert s["detail"] and s["meaning"]
         assert sum(s["weight"] for s in r["signals"]) == 100
 
-    def test_confidence_is_declared_low(self):
-        """A high-confidence claim here would be dishonest; the module is
-        explicit that these are indicators, not detection."""
-        assert textcheck.check_ai_text(LLM)["confidence"] == "low"
+    def test_trained_classifier_is_primary_signal(self):
+        r = textcheck.check_ai_text(LLM)
+        assert r["confidence"] == "medium"
+        assert r["score_kind"] == "trained_classifier_with_style_support"
+        assert r["signals"][0]["name"] == "Trained text classifier"
+        assert r["model_test_accuracy_percent"] >= 95
 
     def test_note_warns_against_treating_it_as_proof(self):
         note = textcheck.check_ai_text(LLM)["note"].lower()
-        assert "not a detector" in note
+        assert "probabilistic" in note
         assert "never" in note
 
     def test_model_phrasing_is_detected(self):
@@ -146,6 +148,25 @@ class TestAiIndicators:
     def test_human_prose_does_not_trigger_phrase_signal(self):
         signals = {s["name"]: s for s in textcheck.check_ai_text(HUMAN)["signals"]}
         assert signals["Model-typical phrasing"]["strength"] == 0
+
+    def test_generated_screenplay_is_not_missed_by_formatting(self):
+        screenplay = (
+            "NOBITA: THIS IS THE GREATEST INVENTION EVER! SCENE TWO, THE HOMEWORK. "
+            "Nobita places the pen on his desk and smiles with excitement. Doraemon "
+            "watches carefully as the machine begins to glow. Suddenly, the homework "
+            "pages lift into the air and words appear by themselves. Nobita celebrates, "
+            "believing his problems are finally solved. However, the invention starts "
+            "writing strange answers and filling every notebook in the room. Doraemon "
+            "warns him that shortcuts often create bigger problems. The machine spins "
+            "faster, papers fly everywhere, and Nobita desperately tries to switch it "
+            "off. At last, Doraemon pulls the power cable and the room becomes quiet. "
+            "Nobita looks at the enormous pile of incorrect homework and sighs. Doraemon "
+            "explains that inventions can help people, but they cannot replace learning, "
+            "patience, and responsibility. Nobita agrees to finish the assignment himself."
+        )
+        r = textcheck.check_ai_text(screenplay)
+        assert r["model_probability_percent"] >= 80
+        assert r["verdict"] == "STRONG INDICATORS"
 
 
 class TestAiRegions:

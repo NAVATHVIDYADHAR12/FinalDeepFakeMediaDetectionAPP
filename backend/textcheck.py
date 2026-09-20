@@ -7,12 +7,10 @@ of completely different quality:
   overlap between two documents is an exact quantity, and the matching passages
   can be pointed at. The percentage means something precise.
 
-* **AI-generated text** is *not* reliably measurable. There is no signal that
-  separates machine from human prose the way a face-swap artefact separates a
-  forgery from a photograph. What is computable is a set of stylistic
-  statistics that skew differently on average - sentence-length variance,
-  vocabulary diversity, repetition, and phrasing that current models overuse.
-  Those are indicators, not proof, and the output says so.
+* **AI-generated text** is probabilistic. A trained TF-IDF classifier supplies
+  the primary signal, while sentence-length variance, vocabulary diversity,
+  repetition, and model-typical phrasing explain supporting style evidence.
+  Generator and domain shift still cause errors, so the result is never proof.
 
 The honest framing matters here: published AI-text detectors routinely
 misclassify human writing, and the consequences (accusing a student of
@@ -23,8 +21,12 @@ score so a reader can judge them, and it never returns a bare verdict.
 from __future__ import annotations
 
 import math
+import json
 import re
 from collections import Counter
+from pathlib import Path
+
+import numpy as np
 
 # --------------------------------------------------------------------- tuning
 MIN_WORDS = 40           # below this, every statistic is noise
@@ -45,6 +47,60 @@ LLM_PHRASES = (
 
 _WORD = re.compile(r"[a-z0-9']+")
 _SENTENCE = re.compile(r"[^.!?]+[.!?]*")
+_MODEL_TOKEN = re.compile(r"(?u)\b\w\w+\b")
+
+_TEXT_MODEL_DIR = Path(__file__).resolve().parent / "text_models"
+_TEXT_MODEL: "_TextClassifier | None" = None
+
+
+class _TextClassifier:
+    """Dependency-free inference for the locally trained TF-IDF classifier."""
+
+    def __init__(self, directory: Path):
+        vocabulary = json.loads((directory / "vocabulary.json").read_text("utf-8"))
+        self.vocabulary = {term: index for index, term in enumerate(vocabulary)}
+        with np.load(directory / "classifier.npz") as data:
+            self.idf = data["idf"].astype(np.float64)
+            self.coefficients = data["coefficients"].astype(np.float64)
+            self.intercept = float(data["intercept"][0])
+            self.calibration_coefficient = float(data["calibration_coefficient"][0])
+            self.calibration_intercept = float(data["calibration_intercept"][0])
+        self.metadata = json.loads((directory / "metadata.json").read_text("utf-8"))
+
+    def predict(self, text: str) -> float:
+        tokens = _MODEL_TOKEN.findall(text.lower())
+        terms = tokens + [f"{a} {b}" for a, b in zip(tokens, tokens[1:])]
+        counts = Counter(
+            index for term in terms
+            if (index := self.vocabulary.get(term)) is not None
+        )
+        if not counts:
+            return 0.5
+
+        norm_squared = 0.0
+        numerator = 0.0
+        for index, count in counts.items():
+            value = count * self.idf[index]
+            norm_squared += value * value
+            numerator += self.coefficients[index] * value
+        raw = numerator / math.sqrt(norm_squared) + self.intercept
+        calibrated = (
+            self.calibration_coefficient * raw + self.calibration_intercept
+        )
+        if calibrated >= 0:
+            return 1.0 / (1.0 + math.exp(-calibrated))
+        exp_value = math.exp(calibrated)
+        return exp_value / (1.0 + exp_value)
+
+
+def _text_classifier() -> _TextClassifier | None:
+    global _TEXT_MODEL
+    if _TEXT_MODEL is None:
+        try:
+            _TEXT_MODEL = _TextClassifier(_TEXT_MODEL_DIR)
+        except (FileNotFoundError, OSError, ValueError, KeyError, json.JSONDecodeError):
+            return None
+    return _TEXT_MODEL
 
 
 def _words(text: str) -> list[str]:
@@ -187,13 +243,7 @@ def _burstiness(sentences: list[str]) -> float:
 
 
 def check_ai_text(text: str) -> dict:
-    """Stylistic indicators associated with machine-generated prose.
-
-    Deliberately returns the component signals as well as a combined score.
-    None of these is decisive, and the combination is not a detector - it is a
-    summary of how the writing compares to typical human prose on measurable
-    axes.
-    """
+    """Trained human-vs-AI classification with supporting style indicators."""
     words = _words(text)
     sentences = _sentences(text)
 
@@ -236,7 +286,7 @@ def check_ai_text(text: str) -> dict:
     variety = len(marks) / 10
     punct_signal = max(0.0, min(1.0, 1 - variety))
 
-    signals = [
+    heuristic_signals = [
         ("Sentence-length variation", burst_signal, 0.28,
          f"coefficient of variation {burst:.2f}",
          "Human writing mixes long and short sentences more than generated text."),
@@ -257,7 +307,41 @@ def check_ai_text(text: str) -> dict:
          "Narrow punctuation range."),
     ]
 
-    score = sum(value * weight for _, value, weight, _, _ in signals)
+    heuristic_score = sum(
+        value * weight for _, value, weight, _, _ in heuristic_signals
+    )
+
+    # The trained classifier is the primary evidence.  The older style rules
+    # remain useful as an explanation layer, but they fail badly on dialogue,
+    # scripts, lists and markdown because those formats naturally have varied
+    # sentence lengths and punctuation.  That was the cause of obviously
+    # generated screenplay text receiving a ~4% score.
+    classifier = _text_classifier()
+    model_probability = classifier.predict(text) if classifier else None
+    if model_probability is not None:
+        heuristic_weights = (0.07, 0.05, 0.04, 0.04, 0.03, 0.02)
+        signals = [
+            (
+                "Trained text classifier",
+                model_probability,
+                0.75,
+                f"{model_probability * 100:.1f}% model probability",
+                "A TF-IDF logistic classifier trained on 40,559 labelled human and AI passages.",
+            ),
+            *[
+                (name, value, weight, detail, meaning)
+                for (name, value, _, detail, meaning), weight
+                in zip(heuristic_signals, heuristic_weights)
+            ],
+        ]
+        score = 0.75 * model_probability + 0.25 * heuristic_score
+        confidence = "medium"
+        score_kind = "trained_classifier_with_style_support"
+    else:
+        signals = heuristic_signals
+        score = heuristic_score
+        confidence = "low"
+        score_kind = "style_indicators_only"
 
     # ---------------------------------------------------------------- regions
     # Which sentences look most machine-like, so the result can point at
@@ -320,7 +404,19 @@ def check_ai_text(text: str) -> dict:
         "flagged_sentences": flagged_sentences,
         "flagged_word_count": flagged_words,
         "total_word_count": len(words),
-        "confidence": "low",          # deliberate: see the module docstring
+        "confidence": confidence,
+        "score_kind": score_kind,
+        "model_probability_percent": (
+            round(model_probability * 100, 1)
+            if model_probability is not None else None
+        ),
+        "model": (
+            classifier.metadata["model"] if classifier else None
+        ),
+        "model_test_accuracy_percent": (
+            round(classifier.metadata["metrics"]["accuracy"] * 100, 1)
+            if classifier else None
+        ),
         "verdict": (
             "STRONG INDICATORS" if score >= 0.65 else
             "SOME INDICATORS" if score >= 0.45 else
@@ -340,10 +436,13 @@ def check_ai_text(text: str) -> dict:
             for name, value, weight, detail, meaning in signals
         ],
         "note": (
-            "These are stylistic statistics, not a detector. Published AI-text "
-            "detectors misclassify human writing regularly, and no signal here is "
-            "decisive. Treat a high score as a reason to look closer - never as "
-            "evidence on its own."
+            "The trained classifier is supported by transparent style indicators, "
+            "but AI-text detection is still probabilistic. Generator, language, "
+            "editing and sample length can change the result; never use this score "
+            "alone as proof of authorship."
+            if classifier else
+            "The trained classifier is unavailable, so this score uses style "
+            "indicators only. Treat it as a reason to look closer, never as proof."
         ),
     }
 

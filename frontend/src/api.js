@@ -204,6 +204,11 @@ export const api = {
     () => engine.analyze(file),
   ),
 
+  // Text classification is server-only. Use the same cold-start guard as
+  // media uploads so a sleeping Render instance does not surface as a vague
+  // "Failed to fetch" error.
+  analyzeText: (formData) => remoteUpload('/api/text/analyze', formData),
+
   identities: () => viaBackendOr(
     () => request('/api/identities'),
     async () => ({ identities: [], engine: 'browser' }),

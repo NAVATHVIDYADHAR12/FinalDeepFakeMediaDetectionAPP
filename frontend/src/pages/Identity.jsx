@@ -16,9 +16,15 @@ export default function Identity() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [matches, setMatches] = useState(null)
+  const [cameraMode, setCameraMode] = useState(null)
+  const [cameraReady, setCameraReady] = useState(false)
+  const [facingMode, setFacingMode] = useState('user')
 
   const enrollRef = useRef(null)
   const matchRef = useRef(null)
+  const videoRef = useRef(null)
+  const canvasRef = useRef(null)
+  const streamRef = useRef(null)
 
   const load = () => api.identities().then((r) => setIdentities(r.identities)).catch((e) => setError(e.message))
 
@@ -29,6 +35,16 @@ export default function Identity() {
   // other call sites, so `load` keeps returning the promise and only the
   // effect discards it.
   useEffect(() => { load() }, [])
+  useEffect(() => () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop())
+  }, [])
+
+  useEffect(() => {
+    if (cameraMode && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current
+      videoRef.current.play().catch(() => {})
+    }
+  }, [cameraMode])
 
   const enroll = async (file) => {
     if (!name.trim()) { setError('Enter a name before choosing a photo.'); return }
@@ -48,6 +64,83 @@ export default function Identity() {
   }
 
   const remove = async (n) => { await api.deleteIdentity(n); load() }
+
+  const stopCamera = () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop())
+    streamRef.current = null
+    setCameraReady(false)
+  }
+
+  const closeCamera = () => {
+    stopCamera()
+    setCameraMode(null)
+  }
+
+  const openCamera = async (mode, requestedFacing = facingMode) => {
+    if (mode === 'enroll' && !name.trim()) {
+      setError('Enter a name before taking an enrolment photo.')
+      return
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError('Camera capture is not supported by this browser. Use HTTPS or choose a photo instead.')
+      return
+    }
+
+    stopCamera()
+    setError(null)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: requestedFacing },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+      })
+      streamRef.current = stream
+      setFacingMode(requestedFacing)
+      setCameraMode(mode)
+      requestAnimationFrame(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream
+          videoRef.current.play().catch(() => {})
+        }
+      })
+    } catch (e) {
+      const denied = e?.name === 'NotAllowedError' || e?.name === 'SecurityError'
+      setError(denied
+        ? 'Camera permission was denied. Allow camera access in your browser, then try again.'
+        : `Could not open the camera${e?.message ? `: ${e.message}` : '.'}`)
+    }
+  }
+
+  const switchCamera = () => {
+    const next = facingMode === 'user' ? 'environment' : 'user'
+    openCamera(cameraMode, next)
+  }
+
+  const capture = () => {
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    if (!video || !canvas || !video.videoWidth || !video.videoHeight) {
+      setError('The camera is still starting. Wait a moment and try again.')
+      return
+    }
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height)
+    const mode = cameraMode
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        setError('Could not capture the camera frame. Please try again.')
+        return
+      }
+      const file = new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' })
+      closeCamera()
+      if (mode === 'enroll') enroll(file)
+      else identify(file)
+    }, 'image/jpeg', 0.92)
+  }
 
   return (
     <div className="space-y-5">
@@ -78,6 +171,11 @@ export default function Identity() {
                     style={{ background: 'linear-gradient(135deg, var(--brand), var(--brand-2))', color: 'var(--on-accent)' }}>
               Choose photo
             </button>
+            <button onClick={() => openCamera('enroll')} disabled={busy || !name.trim()}
+                    className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-45"
+                    style={{ background: 'var(--surface-3)', border: '1px solid var(--border-bright)' }}>
+              Use camera
+            </button>
             <input ref={enrollRef} type="file" accept="image/*" className="hidden"
                    onChange={(e) => e.target.files?.[0] && enroll(e.target.files[0])} />
           </div>
@@ -92,6 +190,11 @@ export default function Identity() {
                   className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-45"
                   style={{ background: 'var(--surface-3)', border: '1px solid var(--border-bright)' }}>
             Upload image to identify
+          </button>
+          <button onClick={() => openCamera('identify')} disabled={busy}
+                  className="ml-2 px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-45"
+                  style={{ background: 'linear-gradient(135deg, var(--brand), var(--brand-2))', color: 'var(--on-accent)' }}>
+            Use camera
           </button>
           <input ref={matchRef} type="file" accept="image/*" className="hidden"
                  onChange={(e) => e.target.files?.[0] && identify(e.target.files[0])} />
@@ -176,6 +279,52 @@ export default function Identity() {
             </ul>
           )}
       </Panel>
+
+      {cameraMode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+             style={{ background: 'rgba(1,5,14,.86)', backdropFilter: 'blur(8px)' }}
+             role="dialog" aria-modal="true" aria-label="Camera capture">
+          <div className="w-full max-w-2xl rounded-2xl p-4 sm:p-5"
+               style={{ background: 'var(--surface-1)', border: '1px solid var(--border-bright)' }}>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div>
+                <h2 className="font-semibold">{cameraMode === 'enroll' ? 'Take enrolment photo' : 'Capture face to identify'}</h2>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--ink-muted)' }}>
+                  Centre the face, use even lighting, and keep the camera steady.
+                </p>
+              </div>
+              <button onClick={closeCamera} className="px-3 py-2 rounded-lg text-sm"
+                      aria-label="Close camera" style={{ border: '1px solid var(--border)' }}>✕</button>
+            </div>
+
+            <div className="relative overflow-hidden rounded-xl aspect-video"
+                 style={{ background: '#020611', border: '1px solid var(--border)' }}>
+              <video ref={videoRef} autoPlay muted playsInline
+                     onLoadedMetadata={() => setCameraReady(true)}
+                     className="w-full h-full object-cover"
+                     style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }} />
+              {!cameraReady && (
+                <div className="absolute inset-0 flex items-center justify-center text-sm"
+                     style={{ color: 'var(--ink-muted)' }}>Starting camera…</div>
+              )}
+            </div>
+            <canvas ref={canvasRef} className="hidden" aria-hidden="true" />
+
+            <div className="flex flex-wrap justify-center gap-3 mt-4">
+              <button onClick={switchCamera} disabled={!cameraReady}
+                      className="px-4 py-2 rounded-lg text-sm disabled:opacity-45"
+                      style={{ background: 'var(--surface-3)', border: '1px solid var(--border)' }}>
+                ↻ Switch camera
+              </button>
+              <button onClick={capture} disabled={!cameraReady || busy}
+                      className="px-6 py-2 rounded-lg text-sm font-semibold disabled:opacity-45"
+                      style={{ background: 'linear-gradient(135deg, var(--brand), var(--brand-2))', color: 'var(--on-accent)' }}>
+                ◉ Capture photo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

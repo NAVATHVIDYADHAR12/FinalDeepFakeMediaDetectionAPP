@@ -277,7 +277,7 @@ class DeepfakeDetector:
                     if cam is not None:
                         best_cam, best_conf = cam, certainty
 
-            if self.low_memory:
+            if getattr(self, "low_memory", False):
                 # Only one classifier is resident at a time. Explicitly drop
                 # its outputs and session before opening the next model.
                 del outputs

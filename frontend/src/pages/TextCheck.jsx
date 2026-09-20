@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { apiUrl } from '../api.js'
+import { api } from '../api.js'
 import { Meter } from '../components/charts.jsx'
 import { Panel } from '../components/ui.jsx'
 
@@ -8,10 +8,9 @@ import { Panel } from '../components/ui.jsx'
  * Plagiarism and AI-generated-text analysis.
  *
  * The two results are presented differently on purpose. Plagiarism overlap is
- * an exact measurement against a supplied reference, so it gets a plain
- * percentage. The AI figure is a summary of stylistic statistics that no
- * detector can turn into proof, so it is shown with its component signals and
- * an explicit caveat rather than as a verdict.
+ * an exact measurement against a supplied reference. AI-text classification
+ * combines a trained model with explainable style signals, but remains
+ * probabilistic and therefore carries an explicit caveat.
  */
 
 const VERDICT_COLOUR = {
@@ -218,13 +217,7 @@ export default function TextCheck() {
       body.append('check_ai', wantAi)
       body.append('check_news', wantNews)
 
-      const res = await fetch(apiUrl('/api/text/analyze'), { method: 'POST', body })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        throw new Error(typeof data.detail === 'string' ? data.detail
-          : 'Text analysis needs the local service — it is not part of the browser-only build.')
-      }
-      setResult(data)
+      setResult(await api.analyzeText(body))
     } catch (e) {
       setError(e.message)
     } finally {
@@ -247,7 +240,7 @@ export default function TextCheck() {
       <Panel index={0} title="Text Analysis">
         <p className="text-[13px] -mt-1 mb-5 leading-relaxed" style={{ color: 'var(--ink-muted)' }}>
           Paste text to check. Plagiarism is measured exactly against a reference you supply;
-          AI detection reports stylistic indicators, which are suggestive rather than conclusive.
+          AI detection combines a trained text classifier with explainable style indicators.
           News credibility looks at how a piece is written — it cannot check whether a claim is true.
         </p>
 
@@ -265,7 +258,7 @@ export default function TextCheck() {
             onChange={setWantAi}
             accent="var(--brand)"
             title="AI-generated content"
-            body="Sentence-length variation, vocabulary diversity, repetition and model-typical phrasing. Indicators, not proof."
+            body="A trained human-vs-AI classifier supported by sentence variation, vocabulary, repetition and phrasing signals."
           />
           <Toggle
             checked={wantNews}
@@ -385,10 +378,10 @@ export default function TextCheck() {
           ) : (
             <>
               <ScoreBlock
-                label="AI indicator score"
+                label="AI-generated probability"
                 percent={ai.ai_likelihood_percent}
                 verdict={ai.verdict}
-                caption={`${ai.word_count} words · ${ai.sentence_count} sentences`}
+                caption={`${ai.word_count} words · ${ai.sentence_count} sentences${ai.model_test_accuracy_percent ? ` · model test accuracy ${ai.model_test_accuracy_percent}%` : ''}`}
               />
 
               <div className="mt-4">
@@ -397,7 +390,7 @@ export default function TextCheck() {
 
               <div className="mt-5">
                 <div className="text-[12px] mb-2.5" style={{ color: 'var(--ink-2)' }}>
-                  What the score is made of
+                  Evidence used for this score
                 </div>
                 <ul className="space-y-2.5">
                   {ai.signals.map((s, i) => (

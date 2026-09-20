@@ -1,0 +1,30 @@
+{
+  "format_version": 1,
+  "model": "TF-IDF (top 200k word 1-2 grams) + logistic regression + Platt scaling",
+  "dataset": "rasbt/human-vs-ai-50k",
+  "dataset_license": "Apache-2.0",
+  "labels": {
+    "0": "human",
+    "1": "ai"
+  },
+  "decision_threshold": 0.5,
+  "minimum_words": 40,
+  "metrics": {
+    "accuracy": 0.9796683774180813,
+    "roc_auc": 0.9978617162100427,
+    "confusion_matrix": [
+      [
+        2501,
+        46
+      ],
+      [
+        57,
+        2462
+      ]
+    ],
+    "train_samples": 40559,
+    "validation_samples": 5085,
+    "test_samples": 5066,
+    "features": 200000
+  }
+}
