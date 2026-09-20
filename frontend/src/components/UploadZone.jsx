@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, formatBytes } from '../api.js'
 
 const IMAGE_EXT = ['.jpg', '.jpeg', '.jfif', '.png', '.bmp', '.webp', '.tiff']
@@ -16,6 +16,12 @@ export default function UploadZone({ onComplete, compact = false, disabled = fal
   const [file, setFile] = useState(null)
   const [error, setError] = useState(null)
   const inputRef = useRef(null)
+
+  // If the service restarts during a scan, the page-level waking notice is the
+  // useful state. Do not leave a stale "Failed to fetch" box underneath it.
+  useEffect(() => {
+    if (disabled && !busy) setError(null)
+  }, [disabled, busy])
 
   const submit = async (picked) => {
     setError(null)

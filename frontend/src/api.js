@@ -49,6 +49,34 @@ async function request(path, options = {}) {
 
 const upload = (path, formData) => request(path, { method: 'POST', body: formData })
 
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** Wait for a sleeping/restarting Render instance before sending a large file.
+ * GET retries are safe; the scan POST itself is still sent exactly once. */
+async function waitForRemoteBackend(maxWaitMs = 90_000) {
+  if (!REMOTE_BACKEND_CONFIGURED) return
+  const deadline = Date.now() + maxWaitMs
+  let lastError = null
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(apiUrl('/api/health'), { credentials: 'include' })
+      if (res.ok) return
+      lastError = new Error(`${res.status} ${res.statusText}`)
+    } catch (error) {
+      lastError = error
+    }
+    await delay(3_000)
+  }
+  throw new Error(
+    `Detection service did not become ready within 90 seconds${lastError?.message ? `: ${lastError.message}` : ''}`
+  )
+}
+
+const remoteUpload = async (path, formData) => {
+  await waitForRemoteBackend()
+  return upload(path, formData)
+}
+
 /* ---------------------------------------------------------------------------
    Backend detection and standalone fallback.
 
@@ -171,7 +199,7 @@ export const api = {
     () => {
       const fd = new FormData()
       fd.append('file', file)
-      return upload('/api/scan', fd)
+      return remoteUpload('/api/scan', fd)
     },
     () => engine.analyze(file),
   ),
@@ -187,7 +215,7 @@ export const api = {
       fd.append('name', name)
       fd.append('file', file)
       if (notes) fd.append('notes', notes)
-      return upload('/api/identity/enroll', fd)
+      return remoteUpload('/api/identity/enroll', fd)
     },
     async () => {
       // Face recognition needs the SFace model; there is nothing honest to
@@ -205,7 +233,7 @@ export const api = {
     () => {
       const fd = new FormData()
       fd.append('file', file)
-      return upload('/api/identity/match', fd)
+      return remoteUpload('/api/identity/match', fd)
     },
     async () => {
       const err = new Error(

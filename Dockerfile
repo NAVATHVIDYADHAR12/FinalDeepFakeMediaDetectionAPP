@@ -64,6 +64,7 @@ USER omniguard
 
 ENV OMNIGUARD_HOST=0.0.0.0 \
     OMNIGUARD_DATA_DIR=/home/omniguard/data \
+    OMNIGUARD_LOW_MEMORY=1 \
     PORT=8000 \
     PYTHONUNBUFFERED=1
 

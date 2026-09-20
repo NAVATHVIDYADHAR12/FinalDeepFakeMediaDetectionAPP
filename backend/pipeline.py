@@ -56,6 +56,18 @@ def analyze_image(path: Path, detector, face_analyzer, want_previews: bool = Tru
         raise ValueError(f"Could not decode image: {path.name}")
     mark("File loaded")
 
+    original_height, original_width = image.shape[:2]
+    if max(original_height, original_width) > cfg.MAX_ANALYSIS_SIDE:
+        scale = cfg.MAX_ANALYSIS_SIDE / max(original_height, original_width)
+        working = cv2.resize(
+            image,
+            (max(1, round(original_width * scale)),
+             max(1, round(original_height * scale))),
+            interpolation=cv2.INTER_AREA,
+        )
+        del image
+        image = working
+
     height, width = image.shape[:2]
 
     faces = face_analyzer.detect(image)
@@ -223,9 +235,10 @@ def analyze_image(path: Path, detector, face_analyzer, want_previews: bool = Tru
         "media_type": "image",
         "filename": path.name,
         "file_size_bytes": path.stat().st_size,
-        "dimensions": f"{width}x{height}",
-        "width": width,
-        "height": height,
+        "dimensions": f"{original_width}x{original_height}",
+        "width": original_width,
+        "height": original_height,
+        "analysis_dimensions": f"{width}x{height}",
         "fake_probability": round(overall, 4) if overall is not None else None,
         "authenticity_score": round((1 - overall) * 100, 1) if overall is not None else None,
         "verdict": (

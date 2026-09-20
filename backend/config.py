@@ -26,6 +26,43 @@ for _d in (DATA_DIR, UPLOAD_DIR, EVIDENCE_DIR, MODELS_DIR, AI_MODELS_DIR):
 HOST = os.getenv("OMNIGUARD_HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", os.getenv("OMNIGUARD_PORT", "8000")))
 
+
+def _cgroup_memory_limit_mb() -> int | None:
+    """Best-effort container RAM limit detection (cgroup v2, then v1)."""
+    for path in (
+        Path("/sys/fs/cgroup/memory.max"),
+        Path("/sys/fs/cgroup/memory/memory.limit_in_bytes"),
+    ):
+        try:
+            raw = path.read_text(encoding="utf-8").strip()
+            if raw and raw != "max":
+                limit = int(raw) // (1024 * 1024)
+                # Some unrestricted cgroup-v1 hosts expose a sentinel near 2^63.
+                if 0 < limit < 1_000_000:
+                    return limit
+        except (OSError, ValueError):
+            continue
+    return None
+
+
+_LOW_MEMORY_ENV = os.getenv("OMNIGUARD_LOW_MEMORY", "auto").lower()
+_CGROUP_MEMORY_MB = _cgroup_memory_limit_mb()
+LOW_MEMORY_MODE = (
+    _LOW_MEMORY_ENV in {"1", "true", "yes"}
+    or (_LOW_MEMORY_ENV == "auto" and _CGROUP_MEMORY_MB is not None
+        and _CGROUP_MEMORY_MB <= 768)
+)
+
+# Large phone photos can consume hundreds of MB across OpenCV, Pillow and ELA
+# buffers. Neural inputs are only 224/384px, so bounding the working copy does
+# not discard useful classifier detail and keeps 512MB containers alive.
+MAX_ANALYSIS_SIDE = int(os.getenv(
+    "OMNIGUARD_MAX_ANALYSIS_SIDE", "1600" if LOW_MEMORY_MODE else "2560"
+))
+FORENSICS_MAX_SIDE = int(os.getenv(
+    "OMNIGUARD_FORENSICS_MAX_SIDE", "1400" if LOW_MEMORY_MODE else "2048"
+))
+
 # Origins allowed to call the API. Local dev origins are always permitted; a
 # hosted frontend (Vercel, etc.) is added via the environment.
 #   OMNIGUARD_ALLOWED_ORIGINS="https://your-app.vercel.app,https://www.example.com"

@@ -141,25 +141,34 @@ export default function App() {
 
   useEffect(() => {
     let alive = true
+    let timer = null
     // `offline` is distinct from null: null means "not asked yet", offline
     // means the request was made and the backend is not there. The UI needs
     // to tell those apart to show the right message on a static deploy.
     // api.health() already falls back to the browser engine, which reports
     // engine:'browser'. A rejection here means something unexpected broke.
-    const poll = () => api.health()
-      .then((h) => alive && setHealth(h))
-      .catch((error) => alive && setHealth(REMOTE_BACKEND_CONFIGURED
-        ? {
-            engine: 'remote',
-            service_unavailable: true,
-            models_loaded: false,
-            model_count: 0,
-            error: error?.message || 'Detection service is not responding',
-          }
-        : { engine: 'browser', models_loaded: false, model_count: 0 }))
+    const poll = async () => {
+      let retryMs = 15_000
+      try {
+        const h = await api.health()
+        if (alive) setHealth(h)
+      } catch (error) {
+        retryMs = 3_000
+        if (alive) setHealth(REMOTE_BACKEND_CONFIGURED
+          ? {
+              engine: 'remote',
+              service_unavailable: true,
+              models_loaded: false,
+              model_count: 0,
+              error: error?.message || 'Detection service is not responding',
+            }
+          : { engine: 'browser', models_loaded: false, model_count: 0 })
+      } finally {
+        if (alive) timer = setTimeout(poll, retryMs)
+      }
+    }
     poll()
-    const id = setInterval(poll, 15000)
-    return () => { alive = false; clearInterval(id) }
+    return () => { alive = false; clearTimeout(timer) }
   }, [])
 
   // A new page should start at the top, not wherever the previous one was left.

@@ -10,6 +10,7 @@ Neither needs PyTorch, which is why the app runs on a CPU-only laptop.
 
 from __future__ import annotations
 
+import gc
 import numpy as np
 import cv2
 
@@ -28,7 +29,7 @@ class FaceAnalyzer:
             cfg.FACE_SCORE_THRESHOLD, cfg.FACE_NMS_THRESHOLD, 5000,
         )
         self._recognizer = None
-        if cfg.SFACE_PATH.exists():
+        if cfg.SFACE_PATH.exists() and not cfg.LOW_MEMORY_MODE:
             try:
                 self._recognizer = cv2.FaceRecognizerSF.create(str(cfg.SFACE_PATH), "")
             except cv2.error:
@@ -79,14 +80,26 @@ class FaceAnalyzer:
     # --------------------------------------------------------------- embedding
     def embed(self, image_bgr: np.ndarray, raw_row: np.ndarray) -> np.ndarray | None:
         """128-d identity vector for one detected face, or None if unavailable."""
-        if self._recognizer is None:
+        recognizer = self._recognizer
+        temporary = False
+        if recognizer is None and cfg.LOW_MEMORY_MODE and cfg.SFACE_PATH.exists():
+            try:
+                recognizer = cv2.FaceRecognizerSF.create(str(cfg.SFACE_PATH), "")
+                temporary = True
+            except cv2.error:
+                recognizer = None
+        if recognizer is None:
             return None
         try:
-            aligned = self._recognizer.alignCrop(image_bgr, raw_row)
-            feat = self._recognizer.feature(aligned)
+            aligned = recognizer.alignCrop(image_bgr, raw_row)
+            feat = recognizer.feature(aligned)
             return np.asarray(feat, dtype=np.float32).flatten()
         except cv2.error:
             return None
+        finally:
+            if temporary:
+                del recognizer
+                gc.collect()
 
     @staticmethod
     def cosine(a: np.ndarray, b: np.ndarray) -> float:

@@ -34,6 +34,10 @@ from faces import FaceAnalyzer          # noqa: E402
 
 STATE: dict = {"detector": None, "ai_detector": None, "faces": None, "load_error": None}
 
+# Avoid large OpenCV thread pools and their stacks in constrained containers.
+if cfg.LOW_MEMORY_MODE:
+    cv2.setNumThreads(1)
+
 # Python's mimetype database predates woff2, so self-hosted fonts would be
 # served as application/octet-stream without this.
 mimetypes.add_type("font/woff2", ".woff2")
@@ -92,6 +96,8 @@ async def lifespan(_app: FastAPI):
         print("  ! no AI-generation model bank yet; no-face images stay UNVERIFIED")
 
     print(f"  {bootstrap.describe_environment()}")
+    print(f"  memory_profile={'low' if cfg.LOW_MEMORY_MODE else 'standard'} "
+          f"analysis_max_side={cfg.MAX_ANALYSIS_SIDE}px")
     print("=" * 62)
     print(f"  listening on {cfg.HOST}:{cfg.PORT}     (API docs at /docs)")
     print("=" * 62 + "\n")
@@ -186,6 +192,7 @@ def health():
         "ai_models_loaded": bool(ai_det and ai_det.ready),
         "ai_model_count": len(ai_det.models) if ai_det else 0,
         "face_analyzer": STATE["faces"] is not None,
+        "low_memory_mode": cfg.LOW_MEMORY_MODE,
     }
 
 
@@ -197,6 +204,7 @@ def system_info():
         "detector": det.info() if det else {"ready": False},
         "ai_detector": ai_det.info() if ai_det else {"ready": False},
         "face_analyzer_ready": STATE["faces"] is not None,
+        "low_memory_mode": cfg.LOW_MEMORY_MODE,
         "thresholds": {
             "suspicious": cfg.SUSPICIOUS_THRESHOLD,
             "fake": cfg.FAKE_THRESHOLD,

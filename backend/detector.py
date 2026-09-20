@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import gc
 from pathlib import Path
 
 import numpy as np
@@ -83,7 +84,36 @@ class DeepfakeDetector:
         self.models: list[dict] = []
         self.manifest: dict = {}
         self.models_dir = Path(models_dir or cfg.MODELS_DIR)
+        self.low_memory = cfg.LOW_MEMORY_MODE
         self._load()
+
+    def _session_options(self) -> ort.SessionOptions:
+        opts = ort.SessionOptions()
+        opts.log_severity_level = 3
+        opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        opts.intra_op_num_threads = 1 if self.low_memory else 2
+        opts.inter_op_num_threads = 1
+        if self.low_memory:
+            # ORT's arena deliberately retains peak allocations. That is fast
+            # on a workstation but kills a 512MB Render instance after the
+            # first inference, so use ordinary allocations in this profile.
+            opts.enable_cpu_mem_arena = False
+            opts.enable_mem_pattern = False
+        return opts
+
+    def _open_session(self, model: dict) -> ort.InferenceSession:
+        session = model.get("session")
+        if session is None:
+            session = ort.InferenceSession(
+                str(model["path"]),
+                sess_options=self._session_options(),
+                providers=["CPUExecutionProvider"],
+            )
+            model["input_name"] = session.get_inputs()[0].name
+            model["output_names"] = [o.name for o in session.get_outputs()]
+            if not self.low_memory:
+                model["session"] = session
+        return session
 
     # ------------------------------------------------------------------ loading
     def _load(self) -> None:
@@ -115,12 +145,6 @@ class DeepfakeDetector:
             for m in self.manifest.get("models", [])
         }
 
-        opts = ort.SessionOptions()
-        opts.log_severity_level = 3
-        opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-        # 2 physical cores on the target machine; more threads only adds contention
-        opts.intra_op_num_threads = 2
-
         for path in sorted(self.models_dir.glob("*.onnx")):
             if path.name in _EXCLUDED:
                 continue
@@ -129,13 +153,20 @@ class DeepfakeDetector:
             ):
                 print(f"  ! ignoring untrained classifier {path.name}")
                 continue
-            try:
-                sess = ort.InferenceSession(
-                    str(path), sess_options=opts, providers=["CPUExecutionProvider"]
-                )
-            except Exception as exc:                      # noqa: BLE001
-                print(f"  ! could not load {path.name}: {exc}")
-                continue
+            sess = None
+            input_name = None
+            output_names = []
+            if not self.low_memory:
+                try:
+                    sess = ort.InferenceSession(
+                        str(path), sess_options=self._session_options(),
+                        providers=["CPUExecutionProvider"],
+                    )
+                    input_name = sess.get_inputs()[0].name
+                    output_names = [o.name for o in sess.get_outputs()]
+                except Exception as exc:                  # noqa: BLE001
+                    print(f"  ! could not load {path.name}: {exc}")
+                    continue
 
             arch = path.stem
             weight_path = self.models_dir / f"{arch}_classifier_w.npy"
@@ -149,13 +180,14 @@ class DeepfakeDetector:
             self.models.append({
                 "arch": arch,
                 "name": DISPLAY_NAMES.get(arch, arch.replace("_", " ").title()),
+                "path": path,
                 "session": sess,
-                "input_name": sess.get_inputs()[0].name,
-                "output_names": [o.name for o in sess.get_outputs()],
+                "input_name": input_name,
+                "output_names": output_names,
                 "classifier_weights": weights,
                 "metrics": metrics_by_arch.get(arch, {}),
             })
-            print(f"  + loaded {arch}")
+            print(f"  + {'registered' if self.low_memory else 'loaded'} {arch}")
 
     @property
     def ready(self) -> bool:
@@ -210,7 +242,8 @@ class DeepfakeDetector:
         best_cam, best_conf = None, -1.0
 
         for m in self.models:
-            outputs = m["session"].run(None, {m["input_name"]: batch})
+            session = self._open_session(m)
+            outputs = session.run(None, {m["input_name"]: batch})
             logits = np.asarray(outputs[0], dtype=np.float32)
             if self.manifest.get("output_type") == "sigmoid_logit":
                 logit = float(logits.reshape(-1)[0])
@@ -243,6 +276,13 @@ class DeepfakeDetector:
                     cam = self._cam(outputs[1], m["classifier_weights"])
                     if cam is not None:
                         best_cam, best_conf = cam, certainty
+
+            if self.low_memory:
+                # Only one classifier is resident at a time. Explicitly drop
+                # its outputs and session before opening the next model.
+                del outputs
+                del session
+                gc.collect()
 
         ensemble = float(np.mean(probs))
         # Agreement: 1.0 when every model says the same thing.

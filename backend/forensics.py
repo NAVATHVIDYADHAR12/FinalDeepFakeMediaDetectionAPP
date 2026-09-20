@@ -123,6 +123,11 @@ def error_level_analysis(path: Path, quality: int = 92) -> dict:
     try:
         with Image.open(path) as img:
             original = img.convert("RGB")
+            if max(original.size) > cfg.FORENSICS_MAX_SIDE:
+                original.thumbnail(
+                    (cfg.FORENSICS_MAX_SIDE, cfg.FORENSICS_MAX_SIDE),
+                    Image.Resampling.LANCZOS,
+                )
 
             buf = io.BytesIO()
             original.save(buf, "JPEG", quality=quality)
@@ -172,10 +177,15 @@ def assess_input_quality(path: Path, image_bgr: np.ndarray) -> dict:
     They only tell the UI that the neural probability is less dependable.
     """
     height, width = image_bgr.shape[:2]
-    short_edge = min(width, height)
+    try:
+        with Image.open(path) as source:
+            source_width, source_height = source.size
+    except Exception:                                      # noqa: BLE001
+        source_width, source_height = width, height
+    short_edge = min(source_width, source_height)
     gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
     blur_variance = float(cv2.Laplacian(gray, cv2.CV_64F).var())
-    bits_per_pixel = path.stat().st_size * 8 / max(1, width * height)
+    bits_per_pixel = path.stat().st_size * 8 / max(1, source_width * source_height)
     suffix = path.suffix.lower()
 
     limitations: list[str] = []
