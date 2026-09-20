@@ -13,6 +13,7 @@
 import * as engine from './engine/index.js'
 
 export const API_BASE = (import.meta.env?.VITE_API_BASE ?? '').replace(/\/$/, '')
+const REMOTE_BACKEND_CONFIGURED = Boolean(API_BASE)
 
 /** Prefix a path with the configured API origin. */
 export const apiUrl = (path) => `${API_BASE}${path}`
@@ -81,6 +82,19 @@ async function backendAvailable() {
 
 /** Use the server when it is there, the browser engine when it is not. */
 async function viaBackendOr(serverCall, localCall) {
+  // A configured remote API is authoritative. In particular, Render's free
+  // instances can take 50+ seconds to wake after inactivity. Probing them with
+  // the short local-development timeout below used to cache a false "offline"
+  // result and silently run the browser-only forensic fallback for the rest of
+  // the page session. That produced a real metadata report but no neural
+  // verdict even though the classifiers were deployed and healthy.
+  //
+  // Call the configured service directly instead. The browser keeps the
+  // request open while a sleeping instance wakes, and a genuine connection
+  // failure is surfaced to the user rather than disguised as an unverified
+  // local scan.
+  if (REMOTE_BACKEND_CONFIGURED) return serverCall()
+
   if (await backendAvailable()) {
     try {
       return await serverCall()
