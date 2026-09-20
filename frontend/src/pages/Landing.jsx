@@ -605,9 +605,10 @@ export default function Landing() {
           <Reveal from="up" className="text-center mb-14">
             <div className="text-[11px] tracking-[0.24em] font-display mb-3"
                  style={{ color: 'var(--brand)' }}>HOW IT WORKS</div>
-            <RepeatFlipHeading text="Six steps, about two hundred milliseconds"
-                               className="font-display font-bold headline"
-                               style={{ fontSize: 'clamp(1.8rem, 4vw, 3rem)' }} />
+            <h2 className="font-display font-bold headline leading-tight"
+                style={{ fontSize: 'clamp(1.8rem, 4vw, 3rem)' }}>
+              Six steps, about two hundred milliseconds
+            </h2>
           </Reveal>
 
           <Reveal stagger={0.1} duration={0.68} from="left" start="top 92%"
