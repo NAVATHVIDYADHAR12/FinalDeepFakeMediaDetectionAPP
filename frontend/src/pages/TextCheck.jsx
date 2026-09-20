@@ -203,6 +203,7 @@ export default function TextCheck() {
   const [result, setResult] = useState(null)
 
   const words = text.trim() ? text.trim().split(/\s+/).length : 0
+  const referenceWords = reference.trim() ? reference.trim().split(/\s+/).length : 0
   const canRun = words > 0 && (wantPlagiarism || wantAi || wantNews) && !busy
 
   const run = async () => {
@@ -234,6 +235,23 @@ export default function TextCheck() {
   const plagSpans = plag?.available ? (plag.matched_spans ?? []) : []
   const aiSpans = ai?.available ? (ai.flagged_sentences ?? []) : []
   const newsSpans = news?.available ? (news.flagged_sentences ?? []) : []
+
+  const downloadPlagiarismReport = () => {
+    if (!plag?.available) return
+    const payload = {
+      generated_at: new Date().toISOString(),
+      method: 'Exact five-word sequence comparison',
+      result: plag,
+      submitted_text: text,
+      reference_text: reference,
+    }
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `omniguard-plagiarism-${Date.now()}.json`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div className="space-y-5 max-w-4xl">
@@ -292,8 +310,9 @@ export default function TextCheck() {
 
         {wantPlagiarism && (
           <label className="block mb-5">
-            <span className="text-[12px] mb-1.5 block" style={{ color: 'var(--ink-2)' }}>
-              Reference text to compare against
+            <span className="text-[12px] mb-1.5 flex items-center justify-between" style={{ color: 'var(--ink-2)' }}>
+              <span>Reference text to compare against <b style={{ color: 'var(--warning)' }}>· required for plagiarism</b></span>
+              <span className="tnum" style={{ color: 'var(--ink-muted)' }}>{referenceWords} words</span>
             </span>
             <textarea
               value={reference}
@@ -307,6 +326,11 @@ export default function TextCheck() {
                 color: 'var(--ink)',
               }}
             />
+            {referenceWords < 5 && (
+              <span className="block mt-2 text-[11px]" style={{ color: 'var(--warning)' }}>
+                Paste at least 5 words from the suspected source. OmniGuard compares these two texts exactly; it does not silently invent a web-search result.
+              </span>
+            )}
           </label>
         )}
 
@@ -340,26 +364,62 @@ export default function TextCheck() {
       {plag && (
         <Panel index={1} title="Plagiarism">
           {!plag.available ? (
-            <p className="text-[13px]" style={{ color: 'var(--ink-muted)' }}>{plag.reason}</p>
+            <div className="rounded-xl p-5" style={{ background: 'color-mix(in srgb, var(--warning) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--warning) 28%, transparent)' }}>
+              <div className="font-display font-semibold text-sm mb-1.5" style={{ color: 'var(--warning)' }}>Comparison source required</div>
+              <p className="text-[12.5px] leading-relaxed" style={{ color: 'var(--ink-2)' }}>{plag.reason}</p>
+            </div>
           ) : (
             <>
+              <div className="flex flex-wrap items-start justify-between gap-4">
               <ScoreBlock
                 label="Overlap with reference"
                 percent={plag.overlap_percent}
                 verdict={plag.verdict}
                 caption={`${plag.matched_ngrams} of ${plag.total_ngrams} ${plag.ngram_size}-word sequences matched`}
               />
+                <button type="button" onClick={downloadPlagiarismReport}
+                        className="press px-4 py-2 rounded-full text-[11px] font-semibold"
+                        style={{ border: '1px solid rgba(255,193,7,.32)', background: 'rgba(255,193,7,.08)', color: 'var(--warning)' }}>
+                  ⇩ Download evidence
+                </button>
+              </div>
 
               <div className="mt-4">
                 <Meter value={plag.overlap_percent / 100} color={colourFor(plag.verdict)} />
               </div>
 
-              {plag.matched_spans?.length > 0 && (
-                <p className="text-[12px] mt-4" style={{ color: 'var(--ink-muted)' }}>
-                  {plag.flagged_words} of {plag.total_words} words match the reference —
-                  marked below.
-                </p>
-              )}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-5">
+                {[
+                  [plag.word_coverage_percent ?? 0, 'Word coverage', '%'],
+                  [plag.flagged_words, 'Matched words', ''],
+                  [plag.longest_match_words, 'Longest passage', ' words'],
+                  [plag.unique_matched_passages ?? plag.matched_spans?.length ?? 0, 'Matched regions', ''],
+                ].map(([value, label, suffix]) => (
+                  <div key={label} className="rounded-xl p-3" style={{ background: 'rgba(3,7,18,.38)', border: '1px solid var(--border)' }}>
+                    <div className="figure text-xl" style={{ color: 'var(--warning)' }}>{value}{suffix}</div>
+                    <div className="text-[10px] mt-1" style={{ color: 'var(--ink-muted)' }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-5 rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
+                <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'rgba(255,193,7,.07)' }}>
+                  <span className="font-display text-[12px] font-semibold">Exact matched passages</span>
+                  <span className="text-[10px] tnum" style={{ color: 'var(--ink-muted)' }}>{plag.total_words} submitted · {plag.reference_words} reference words</span>
+                </div>
+                {plag.matched_passages?.length ? (
+                  <ol className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                    {plag.matched_passages.map((passage, index) => (
+                      <li key={`${passage}-${index}`} className="px-4 py-3 flex gap-3 text-[12px] leading-relaxed" style={{ borderColor: 'var(--border)', color: 'var(--ink-2)' }}>
+                        <span className="figure shrink-0" style={{ color: 'var(--warning)' }}>{String(index + 1).padStart(2, '0')}</span>
+                        <q>{passage}</q>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="px-4 py-4 text-[12px]" style={{ color: 'var(--good)' }}>No exact five-word passages were found in the supplied reference.</p>
+                )}
+              </div>
 
               <p className="text-[11.5px] mt-4 pt-3 border-t leading-relaxed"
                  style={{ color: 'var(--ink-muted)', borderColor: 'var(--border)' }}>

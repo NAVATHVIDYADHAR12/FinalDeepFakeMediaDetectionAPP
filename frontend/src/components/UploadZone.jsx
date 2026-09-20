@@ -3,6 +3,7 @@ import { api, formatBytes } from '../api.js'
 
 const IMAGE_EXT = ['.jpg', '.jpeg', '.jfif', '.png', '.bmp', '.webp', '.tiff']
 const VIDEO_EXT = ['.mp4', '.mov', '.avi', '.mkv', '.webm']
+const MAX_UPLOAD_MB = 500
 
 /**
  * Drag-and-drop upload with client-side extension checking.
@@ -29,6 +30,12 @@ export default function UploadZone({ onComplete, compact = false, disabled = fal
     const ext = `.${picked.name.split('.').pop().toLowerCase()}`
     if (![...IMAGE_EXT, ...VIDEO_EXT].includes(ext)) {
       setError(`Unsupported file type "${ext}". Supported: ${[...IMAGE_EXT, ...VIDEO_EXT].join(', ')}`)
+      return
+    }
+
+    if (picked.size > MAX_UPLOAD_MB * 1_000_000) {
+      setFile(picked)
+      setError(`This file is ${Math.round(picked.size / 1_000_000)} MB. Hosted scans support up to ${MAX_UPLOAD_MB} MB; trim the clip or export it as H.264 MP4 at 720p, then try again.`)
       return
     }
 
@@ -89,6 +96,9 @@ export default function UploadZone({ onComplete, compact = false, disabled = fal
             </p>
             <p className="text-xs mt-1.5 max-w-sm" style={{ color: 'var(--ink-muted)' }}>
               Images: JPG, JPEG, JFIF, PNG, WEBP, BMP, TIFF · Videos: MP4, MOV, AVI, MKV, WEBM
+            </p>
+            <p className="text-[10px] mt-1" style={{ color: 'var(--ink-muted)' }}>
+              Up to {MAX_UPLOAD_MB} MB · large videos are sampled without loading the whole clip into memory
             </p>
             {!disabled && (
               <span className="mt-4 px-5 py-2 rounded-lg text-sm font-medium"

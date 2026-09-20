@@ -150,3 +150,184 @@ code, pre, .mono {
   background: rgba(0, 240, 255, 0.28);
   color: var(--ink);
 }
+
+// The landing page scrolls inside <main>, so the progress rail belongs to that
+// container rather than the browser viewport. The blurred bead and bubbles
+// create a liquid read while the fill itself remains a single cheap transform.
+.liquid-progress {
+  position: sticky;
+  top: 0;
+  z-index: 80;
+  width: 100%;
+  height: 4px;
+  margin: 0 0 -4px;
+  opacity: 0;
+  transition: opacity .35s ease;
+  pointer-events: none;
+  background: rgba(3, 7, 18, .28);
+  backdrop-filter: blur(8px);
+
+  &.is-visible { opacity: 1; }
+}
+
+.liquid-progress__fill {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-origin: left center;
+  background: linear-gradient(90deg, #00f0ff, #39ff14 72%, #e2e8f0);
+  box-shadow: 0 0 14px rgba(0, 240, 255, .72);
+  will-change: transform;
+}
+
+.liquid-progress__bead {
+  position: absolute;
+  right: -5px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  transform: translateY(-50%);
+  background: #e2e8f0;
+  box-shadow: 0 0 9px #00f0ff, 0 0 22px rgba(0, 240, 255, .85);
+}
+
+.stat-prism {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: auto 14% 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--brand), transparent);
+    opacity: .65;
+  }
+}
+
+.stat-prism__glow {
+  position: absolute;
+  width: 80px;
+  height: 80px;
+  left: calc(50% - 40px);
+  top: -55px;
+  border-radius: 50%;
+  background: var(--brand);
+  filter: blur(34px);
+  opacity: .22;
+}
+
+.ensemble-stage { position: relative; overflow: hidden; }
+.ensemble-stage__orbit {
+  position: absolute;
+  inset: 12% 18%;
+  border: 1px solid rgba(0, 240, 255, .18);
+  border-radius: 50%;
+  transform: rotateX(67deg) rotateZ(-8deg);
+  animation: ensemble-orbit 12s linear infinite;
+  pointer-events: none;
+
+  span {
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: rgba(3, 7, 18, .9);
+    border: 1px solid rgba(0, 240, 255, .5);
+    color: var(--brand);
+    font: 600 9px var(--font-display);
+    box-shadow: 0 0 18px rgba(0, 240, 255, .28);
+  }
+  span:nth-child(1) { left: -12px; top: 45%; }
+  span:nth-child(2) { right: -12px; top: 45%; }
+  span:nth-child(3) { left: 50%; top: -12px; }
+}
+.ensemble-stage__caption {
+  position: absolute;
+  left: 24px;
+  bottom: 21px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 9px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+
+  span { width: 6px; height: 6px; border-radius: 50%; background: var(--good); }
+}
+
+.report-card-wrap { min-height: 100%; }
+.report-capability {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  transition: border-color .25s ease, box-shadow .25s ease;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--card-accent) 15%, transparent), transparent 42%);
+    z-index: -1;
+  }
+  &:hover { border-color: color-mix(in srgb, var(--card-accent) 45%, transparent); }
+}
+.report-capability__grid {
+  position: absolute;
+  right: -22px;
+  top: -18px;
+  width: 120px;
+  height: 120px;
+  opacity: .18;
+  transform: perspective(170px) rotateX(62deg) rotateZ(28deg);
+  background-image: linear-gradient(var(--card-accent) 1px, transparent 1px), linear-gradient(90deg, var(--card-accent) 1px, transparent 1px);
+  background-size: 14px 14px;
+  mask-image: radial-gradient(circle, #000, transparent 72%);
+}
+.report-capability__index {
+  position: absolute;
+  right: 14px;
+  bottom: 4px;
+  font-size: 42px;
+  color: color-mix(in srgb, var(--card-accent) 8%, transparent);
+}
+
+@keyframes ensemble-orbit { to { transform: rotateX(67deg) rotateZ(352deg); } }
+
+.future-footer { overflow: hidden; background: linear-gradient(180deg, rgba(3,7,18,.72), rgba(3,7,18,.98)); }
+.future-footer__orb { position: absolute; border-radius: 50%; filter: blur(80px); pointer-events: none; opacity: .14; }
+.future-footer__orb--one { width: 360px; height: 360px; background: var(--brand); left: -150px; top: 80px; }
+.future-footer__orb--two { width: 280px; height: 280px; background: var(--good); right: -130px; bottom: -120px; opacity: .07; }
+.future-footer__cta {
+  position: relative; border-color: rgba(0,240,255,.25);
+  background: linear-gradient(120deg, rgba(0,240,255,.09), rgba(11,19,43,.68) 52%, rgba(57,255,20,.05));
+  box-shadow: 0 30px 70px -45px rgba(0,240,255,.75);
+}
+.future-footer__scan {
+  position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 35%, rgba(0,240,255,.08) 50%, transparent 65%);
+  transform: translateX(-100%); animation: footer-scan 7s ease-in-out infinite;
+}
+.footer-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px;
+  border: 1px solid rgba(226,232,240,.11); border-radius: 999px;
+  background: rgba(226,232,240,.04); color: var(--ink-muted);
+  font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
+  i { width: 5px; height: 5px; border-radius: 50%; background: var(--good); }
+}
+.footer-link { color: var(--ink-2); transition: color .2s ease, transform .2s ease; }
+.footer-link:hover { color: var(--ink); transform: translateX(3px); }
+.footer-link__arrow { color: var(--brand); opacity: 0; transform: translate(-5px, 4px); transition: opacity .2s, transform .2s; }
+.footer-link:hover .footer-link__arrow { opacity: 1; transform: translate(0, 0); }
+.future-footer__wordmark {
+  margin-top: 46px; font-family: var(--font-display); font-size: clamp(3rem, 11vw, 8.7rem);
+  font-weight: 800; line-height: .82; letter-spacing: -.06em; text-align: center;
+  color: transparent; -webkit-text-stroke: 1px rgba(0,240,255,.14);
+  mask-image: linear-gradient(to bottom, #000, transparent 92%); user-select: none;
+}
+@keyframes footer-scan { 0%, 35% { transform: translateX(-100%); } 70%, 100% { transform: translateX(100%); } }

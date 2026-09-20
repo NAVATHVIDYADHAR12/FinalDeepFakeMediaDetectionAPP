@@ -210,6 +210,9 @@ def check_plagiarism(text: str, reference: str) -> dict:
         "matched_spans": sorted(spans, key=lambda s: s["start"]),
         "flagged_words": sum(flagged),
         "total_words": len(words),
+        "reference_words": len(ref_words),
+        "word_coverage_percent": round(sum(flagged) / len(words) * 100, 1),
+        "unique_matched_passages": len(spans),
         "longest_match_words": max((s["words"] for s in spans), default=0),
         "verdict": (
             "HIGH" if overlap >= 0.25 else

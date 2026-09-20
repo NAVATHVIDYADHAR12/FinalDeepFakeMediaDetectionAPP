@@ -9,7 +9,7 @@ import Footer from '../components/Footer.jsx'
 import Marquee from '../components/Marquee.jsx'
 import TiltCard from '../components/TiltCard.jsx'
 import { useScroller } from '../ScrollContext.js'
-import { prefersReducedMotion } from '../hooks.js'
+import { prefersReducedMotion, useCountUp, useInView } from '../hooks.js'
 
 gsap.registerPlugin(ScrollTrigger)
 
@@ -115,11 +115,27 @@ const PIPELINE = [
 ]
 
 const STATS = [
-  { value: '190k', label: 'Training images' },
-  { value: '3', label: 'Neural networks' },
-  { value: '~200ms', label: 'Per image, on CPU' },
-  { value: '0', label: 'Cloud calls' },
+  { value: 190, suffix: 'k', label: 'Training images', detail: 'FaceForensics++ crops' },
+  { value: 3, suffix: '', label: 'Neural networks', detail: 'One calibrated ensemble' },
+  { value: 200, prefix: '~', suffix: 'ms', label: 'Per image, on CPU', detail: 'No GPU required' },
+  { value: 0, suffix: '', label: 'Cloud calls', detail: 'Your media stays private' },
 ]
+
+function AnimatedStat({ stat, index }) {
+  const [ref, inView] = useInView({ threshold: 0.45 })
+  const count = useCountUp(stat.value, { duration: 1150 + index * 150, start: inView })
+  return (
+    <div ref={ref} className="stat-prism panel p-5 text-center lift" style={{ '--stat-i': index }}>
+      <div className="stat-prism__glow" aria-hidden="true" />
+      <div className="figure text-3xl mb-1 relative" style={{ color: 'var(--brand)' }}>
+        {stat.prefix}{Math.round(count)}{stat.suffix}
+      </div>
+      <div className="text-[12px] relative" style={{ color: 'var(--ink-2)' }}>{stat.label}</div>
+      <div className="text-[9px] tracking-[.12em] uppercase mt-2 relative"
+           style={{ color: 'var(--ink-muted)' }}>{stat.detail}</div>
+    </div>
+  )
+}
 
 /**
  * Hero copy over the video.
@@ -433,10 +449,7 @@ export default function Landing() {
         <Reveal stagger={0.22} from="up"
                 className="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-4">
           {STATS.map((s) => (
-            <div key={s.label} className="panel p-5 text-center lift">
-              <div className="figure text-3xl mb-1" style={{ color: 'var(--brand)' }}>{s.value}</div>
-              <div className="text-[12px]" style={{ color: 'var(--ink-muted)' }}>{s.label}</div>
-            </div>
+            <AnimatedStat key={s.label} stat={s} index={STATS.indexOf(s)} />
           ))}
         </Reveal>
       </section>
@@ -450,7 +463,15 @@ export default function Landing() {
             body="Every face is scored by three independently trained convolutional networks. Because different architectures fail on different images, averaging their votes is measurably stronger than trusting any one of them — and when they disagree, the report says so instead of hiding it behind a confident number."
           />
           <Reveal from="right" delay={0.1}>
-            <TiltCard className="panel p-4"><ScanVisual /></TiltCard>
+            <TiltCard className="panel p-4 ensemble-stage">
+              <div className="ensemble-stage__orbit" aria-hidden="true">
+                <span>E</span><span>X</span><span>M</span>
+              </div>
+              <ScanVisual />
+              <div className="ensemble-stage__caption">
+                <span className="glow-pulse" /> Consensus engine · live inference
+              </div>
+            </TiltCard>
           </Reveal>
         </div>
       </section>
@@ -470,7 +491,9 @@ export default function Landing() {
           <Reveal stagger={0.22} from="scale"
                   className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {CAPABILITIES.map((c, i) => (
-              <article key={c.title} className="panel p-6 lift h-full">
+              <TiltCard key={c.title} className="h-full report-card-wrap">
+              <article className="panel p-6 h-full report-capability" style={{ '--card-accent': c.accent }}>
+                <div className="report-capability__grid" aria-hidden="true" />
                 {/* SOS beacon: currentColor drives the glow, so each icon
                     signals in its own accent. --i offsets the phase so the
                     grid blinks in sequence rather than in unison. */}
@@ -485,7 +508,9 @@ export default function Landing() {
                 <p className="text-[13.5px] leading-relaxed" style={{ color: 'var(--ink-2)' }}>
                   {c.body}
                 </p>
+                <div className="report-capability__index figure" aria-hidden="true">0{i + 1}</div>
               </article>
+              </TiltCard>
             ))}
           </Reveal>
         </div>

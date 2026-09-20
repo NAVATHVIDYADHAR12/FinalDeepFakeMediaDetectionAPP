@@ -7,7 +7,6 @@ Or via uvicorn:    uvicorn main:app --app-dir backend --reload
 from __future__ import annotations
 
 import mimetypes
-import shutil
 import sys
 import uuid
 from contextlib import asynccontextmanager
@@ -151,17 +150,26 @@ def _save_upload(upload: UploadFile, allowed: set[str]) -> Path:
         )
 
     dest = cfg.UPLOAD_DIR / f"{uuid.uuid4().hex[:12]}{suffix}"
-    with dest.open("wb") as fh:
-        shutil.copyfileobj(upload.file, fh, length=1024 * 1024)
-
-    size_mb = dest.stat().st_size / 1e6
-    if size_mb > cfg.MAX_UPLOAD_MB:
+    max_bytes = cfg.MAX_UPLOAD_MB * 1_000_000
+    written = 0
+    try:
+        # Bound the copy while it is happening. The old implementation copied
+        # the entire oversized upload first, briefly consuming arbitrary disk,
+        # and only then checked its size.
+        with dest.open("wb") as fh:
+            while chunk := upload.file.read(1024 * 1024):
+                written += len(chunk)
+                if written > max_bytes:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=(f"File is larger than {cfg.MAX_UPLOAD_MB} MB. "
+                                "Trim or compress the video and try again."),
+                    )
+                fh.write(chunk)
+    except Exception:
         dest.unlink(missing_ok=True)
-        raise HTTPException(
-            status_code=413,
-            detail=f"File is {size_mb:.0f} MB; limit is {cfg.MAX_UPLOAD_MB} MB.",
-        )
-    if dest.stat().st_size == 0:
+        raise
+    if written == 0:
         dest.unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 

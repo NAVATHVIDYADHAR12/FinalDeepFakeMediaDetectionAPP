@@ -127,7 +127,10 @@ TRACK_MATCH_THRESHOLD = 0.30       # looser, for following a face across frames
 TRACK_IOU_THRESHOLD = 0.30
 
 # --- uploads ---
-MAX_UPLOAD_MB = 200
+# Large videos are sampled frame-by-frame rather than loaded into RAM. 500 MB
+# accepts modern phone clips while still protecting the free hosted service's
+# finite temporary disk. Deployments can tighten this without changing code.
+MAX_UPLOAD_MB = int(os.getenv("OMNIGUARD_MAX_UPLOAD_MB", "500"))
 ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".jfif", ".png", ".bmp", ".webp", ".tiff"}
 ALLOWED_VIDEO_EXT = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 

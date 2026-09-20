@@ -270,7 +270,7 @@ export function systemInfo() {
     face_analyzer_ready: false,
     engine: 'browser',
     thresholds: { suspicious: 0.4, fake: 0.65 },
-    limits: { max_upload_mb: 200, video_max_frames: 32 },
+    limits: { max_upload_mb: 500, video_max_frames: 32 },
     supported: {
       image: IMAGE_EXT.map((e) => `.${e}`),
       video: VIDEO_EXT.map((e) => `.${e}`),

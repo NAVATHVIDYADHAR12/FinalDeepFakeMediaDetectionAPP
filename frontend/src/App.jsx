@@ -18,6 +18,7 @@ import Identity from './pages/Identity.jsx'
 import System from './pages/System.jsx'
 import TextCheck from './pages/TextCheck.jsx'
 import ComingSoon from './pages/ComingSoon.jsx'
+import LiquidScrollProgress from './components/LiquidScrollProgress.jsx'
 
 /* Navigation mirrors the product design. Entries marked `soon` are honest
    placeholders - the prototype detects image and video, and says so plainly
@@ -192,6 +193,8 @@ export default function App() {
 
           <main ref={attachMain}
                 className={`flex-1 overflow-y-auto relative z-10 ${isLanding ? 'px-6' : 'px-6 pb-6'}`}>
+
+            {isLanding && <LiquidScrollProgress />}
 
             {/* The nav bar lives inside the scroll container so `sticky` works,
                 and outside the keyed wrapper below so it does not remount — and

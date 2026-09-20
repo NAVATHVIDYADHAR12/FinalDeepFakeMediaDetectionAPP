@@ -302,7 +302,8 @@ $sos-dash: 0 0 20px -4px currentColor;
   .spin, .pulse-soft, .rise, .reveal, .page-enter, .fade-in, .slide-in-left,
   .pop-in, .bubble-in, .typing-dot, .halo, .shimmer, .glow-pulse, .sos-glow,
   .headline-animated, .letter-reveal > span,
-  .spark-sweep::before, .spark-sweep::after {
+  .spark-sweep::before, .spark-sweep::after, .ensemble-stage__orbit,
+  .future-footer__scan {
     animation: none !important;
   }
 
