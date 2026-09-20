@@ -73,7 +73,7 @@ function Sidebar() {
   const current = location.pathname + location.search
 
   return (
-    <aside className="w-[228px] shrink-0 border-r flex flex-col h-full overflow-y-auto"
+    <aside className="w-full min-w-[180px] border-r flex flex-col h-full overflow-y-auto"
            style={{ borderColor: 'var(--border)', background: 'var(--surface-1)' }}>
       {/* The brand mark lives in the floating nav bar now; the sidebar keeps
           only its tagline so the column still has a header. */}
@@ -130,6 +130,17 @@ export default function App() {
   const [health, setHealth] = useState(null)
   const location = useLocation()
   const mainRef = useRef(null)
+  const resizeRef = useRef(null)
+  const [sidebarHidden, setSidebarHidden] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return window.localStorage.getItem('omniguard-sidebar-hidden') === 'true'
+  })
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    if (typeof window === 'undefined') return 228
+    const saved = Number(window.localStorage.getItem('omniguard-sidebar-width'))
+    return Number.isFinite(saved) && saved >= 180 && saved <= 360 ? saved : 228
+  })
+  const [resizingSidebar, setResizingSidebar] = useState(false)
 
   // GSAP and the scroll hooks need the actual <main> element. A ref alone is
   // null on first render, so consumers would never receive it — the element is
@@ -177,15 +188,85 @@ export default function App() {
     mainRef.current?.scrollTo({ top: 0 })
   }, [location.pathname])
 
+  useEffect(() => {
+    window.localStorage.setItem('omniguard-sidebar-hidden', String(sidebarHidden))
+    window.localStorage.setItem('omniguard-sidebar-width', String(sidebarWidth))
+  }, [sidebarHidden, sidebarWidth])
+
+  useEffect(() => {
+    if (!resizingSidebar) return
+    const onMove = (event) => {
+      const start = resizeRef.current
+      if (!start) return
+      setSidebarWidth(Math.max(180, Math.min(360, start.width + event.clientX - start.x)))
+    }
+    const onUp = () => {
+      setResizingSidebar(false)
+      resizeRef.current = null
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+  }, [resizingSidebar])
+
+  const beginSidebarResize = (event) => {
+    event.preventDefault()
+    resizeRef.current = { x: event.clientX, width: sidebarWidth }
+    setResizingSidebar(true)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }
+
   const isLanding = location.pathname === '/'
   const isAuthPage = ['/signup', '/login'].includes(location.pathname)
   const fullBleed = isLanding || isAuthPage
 
   return (
     <ScrollContext.Provider value={scrollEl}>
-      <div className="flex h-full">
+      <div className="flex h-full relative">
         {/* The landing page runs full-bleed; the sidebar belongs to the app. */}
-        {!fullBleed && <Sidebar />}
+        {!fullBleed && (
+          <>
+            <div className="sidebar-shell shrink-0 relative h-full"
+                 style={{
+                   width: sidebarHidden ? 0 : sidebarWidth,
+                   opacity: sidebarHidden ? 0 : 1,
+                   overflow: 'hidden',
+                   transition: resizingSidebar ? 'none' : 'width .28s cubic-bezier(.22,1,.36,1), opacity .2s ease',
+                 }}
+                 aria-hidden={sidebarHidden}
+                 inert={sidebarHidden ? '' : undefined}>
+              <div className="h-full" style={{ width: sidebarWidth }}>
+                <Sidebar />
+              </div>
+              {!sidebarHidden && (
+                <div role="separator" aria-label="Resize sidebar" aria-orientation="vertical"
+                     tabIndex={0} className="sidebar-resize-handle"
+                     title="Drag to resize · double-click to reset"
+                     onPointerDown={beginSidebarResize}
+                     onDoubleClick={() => setSidebarWidth(228)}
+                     onKeyDown={(event) => {
+                       if (event.key === 'ArrowLeft') setSidebarWidth((width) => Math.max(180, width - 12))
+                       if (event.key === 'ArrowRight') setSidebarWidth((width) => Math.min(360, width + 12))
+                     }} />
+              )}
+            </div>
+            <button type="button"
+                    onClick={() => setSidebarHidden((hidden) => !hidden)}
+                    className={`sidebar-toggle press ${sidebarHidden ? 'is-open-button' : ''}`}
+                    style={{ left: sidebarHidden ? 12 : sidebarWidth - 15 }}
+                    aria-label={sidebarHidden ? 'Open sidebar' : 'Hide sidebar'}
+                    aria-expanded={!sidebarHidden}
+                    title={sidebarHidden ? 'Open sidebar' : 'Hide sidebar'}>
+              <span aria-hidden="true">{sidebarHidden ? '☰' : '‹'}</span>
+            </button>
+          </>
+        )}
 
         <div className="flex-1 flex flex-col min-w-0 relative">
           <div className="aurora" aria-hidden="true" />

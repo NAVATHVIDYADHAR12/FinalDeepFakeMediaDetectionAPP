@@ -331,3 +331,47 @@ code, pre, .mono {
   mask-image: linear-gradient(to bottom, #000, transparent 92%); user-select: none;
 }
 @keyframes footer-scan { 0%, 35% { transform: translateX(-100%); } 70%, 100% { transform: translateX(100%); } }
+
+// App sidebar controls: the thin illuminated rail is draggable, while the
+// adjacent button collapses the entire rail and remains available to reopen it.
+.sidebar-resize-handle {
+  position: absolute;
+  z-index: 61;
+  top: 0;
+  right: -3px;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0 2px;
+    background: var(--brand);
+    opacity: 0;
+    box-shadow: 0 0 14px rgba(0,240,255,.7);
+    transition: opacity .2s ease;
+  }
+  &:hover::after, &:focus-visible::after { opacity: .7; }
+}
+
+.sidebar-toggle {
+  position: absolute;
+  z-index: 72;
+  top: 22px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid rgba(0,240,255,.36);
+  background: rgba(3,7,18,.88);
+  color: var(--brand);
+  box-shadow: 0 0 18px -6px rgba(0,240,255,.7);
+  backdrop-filter: blur(10px);
+  transition: left .28s cubic-bezier(.22,1,.36,1), transform .18s ease, background .18s ease;
+
+  &:hover { background: rgba(0,240,255,.13); transform: scale(1.06); }
+  &.is-open-button { border-radius: 10px; }
+}
